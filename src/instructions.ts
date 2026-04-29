@@ -11,12 +11,15 @@ import {
   AGENT_VAULT_TAGS,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   DEVNET_RELEASE_MANIFEST,
+  MAX_CPI_ACCOUNTS,
+  MAX_CPI_IX_DATA_LEN,
+  MAX_POST_CHECKS,
   NATIVE_MINT_ID,
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_KIND,
 } from "./constants.js";
-import { concatData, encodeLabel, toPublicKey, u16Le, u64Le } from "./codec.js";
+import { concatData, encodeLabel, toPublicKey, u8, u16Le, u64Le } from "./codec.js";
 import { AgentVaultPdas } from "./pda.js";
 import type { AgentVaultReleaseManifest, ExecuteCpiCheckedParams, PublicKeyish, TransferSplParams, U64Input } from "./types.js";
 
@@ -204,6 +207,7 @@ export class AgentVaultInstructions {
 
   transferSpl(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, params: TransferSplParams): TransactionInstruction {
     const token = toPublicKey(params.tokenProgram ?? TOKEN_PROGRAM_ID);
+    const decimals = u8(params.decimals, "decimals");
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
@@ -221,7 +225,7 @@ export class AgentVaultInstructions {
         AGENT_VAULT_TAGS.transferSpl,
         u16Le(index),
         u64Le(params.amount),
-        Buffer.from([params.decimals]),
+        Buffer.from([decimals]),
         u64Le(params.expectedFee ?? 0),
       ),
     });
@@ -285,6 +289,18 @@ export class AgentVaultInstructions {
   }
 
   executeCpiChecked(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, params: ExecuteCpiCheckedParams): TransactionInstruction {
+    const walletMetaIndex = u8(params.walletMetaIndex, "walletMetaIndex");
+    const targetAccountCount = u8(params.targetAccounts.length, "target account count");
+    const postCheckCount = u8(params.postCheckCount, "postCheckCount");
+    if (targetAccountCount > MAX_CPI_ACCOUNTS) {
+      throw new RangeError(`target account count must be <= ${MAX_CPI_ACCOUNTS}`);
+    }
+    if (params.targetInstructionData.length > MAX_CPI_IX_DATA_LEN) {
+      throw new RangeError(`target instruction data must be <= ${MAX_CPI_IX_DATA_LEN} bytes`);
+    }
+    if (postCheckCount > MAX_POST_CHECKS) {
+      throw new RangeError(`postCheckCount must be <= ${MAX_POST_CHECKS}`);
+    }
     const targetAccounts = params.targetAccounts.map((account) =>
       meta(account.pubkey, account.isSigner ?? false, account.isWritable ?? false)
     );
@@ -302,10 +318,10 @@ export class AgentVaultInstructions {
       data: concatData(
         AGENT_VAULT_TAGS.executeCpiChecked,
         u16Le(index),
-        Buffer.from([params.walletMetaIndex, params.targetAccounts.length]),
+        Buffer.from([walletMetaIndex, targetAccountCount]),
         u16Le(params.targetInstructionData.length),
         params.targetInstructionData,
-        Buffer.from([params.postCheckCount]),
+        Buffer.from([postCheckCount]),
         params.postCheckData,
       ),
     });

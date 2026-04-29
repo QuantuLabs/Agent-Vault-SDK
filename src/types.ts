@@ -12,7 +12,7 @@ import type {
 } from "@solana/web3.js";
 import type { SolanaSDK } from "8004-solana";
 
-export type PublicKeyish = PublicKey | string;
+export type PublicKeyish = PublicKey | string | { toBase58(): string };
 export type U64Input = bigint | number | string;
 export type TokenProgramKind = "tokenkeg" | "token2022";
 export type AgentVaultTransactionSigner =
@@ -55,6 +55,7 @@ export interface AgentVaultClientConfig {
   releaseManifest?: AgentVaultReleaseManifest;
   identity?: IdentitySdk;
   signer?: AgentVaultTransactionSigner;
+  allowUnverifiedDeployment?: boolean;
 }
 
 export interface CreateIdentityParams {
@@ -125,10 +126,12 @@ export interface TransactionPlanOptions {
   feePayer?: PublicKeyish;
   recentBlockhash?: string;
   signer?: AgentVaultTransactionSigner;
+  signers?: AgentVaultTransactionSigner[];
   sign?: boolean;
   send?: boolean;
   commitment?: Commitment;
   sendOptions?: SendOptions;
+  allowUnverifiedDeployment?: boolean;
 }
 
 export interface SetupWalletOptions extends SetupWalletInstructionsOptions, TransactionPlanOptions {}
@@ -147,6 +150,7 @@ export interface PreparedVaultTransaction {
   lastValidBlockHeight: number | null;
   signed: boolean;
   signer: PublicKey | null;
+  signers: PublicKey[];
 }
 
 export interface ExecutedVaultTransaction extends PreparedVaultTransaction {
@@ -161,6 +165,7 @@ export type WalletActionOptions = TransactionPlanOptions;
 
 export interface WalletActionPlan extends ExecutedVaultTransaction {
   instruction: TransactionInstruction;
+  instructions: TransactionInstruction[];
 }
 
 export interface FundWalletOptions extends WalletActionOptions {
@@ -169,30 +174,56 @@ export interface FundWalletOptions extends WalletActionOptions {
   amount: U64Input;
 }
 
-export interface SendWalletOptions extends WalletActionOptions {
+export interface SolSendWalletOptions extends WalletActionOptions {
   holder: PublicKeyish;
   from: number;
   to: number | PublicKeyish;
   amount: U64Input;
-  mint?: PublicKeyish;
-  decimals?: number;
+  mint?: undefined;
+}
+
+export interface TokenSendWalletOptions extends WalletActionOptions {
+  holder: PublicKeyish;
+  from: number;
+  to: number | PublicKeyish;
+  amount: U64Input;
+  mint: PublicKeyish;
+  decimals: number;
   tokenProgram?: PublicKeyish;
   expectedFee?: U64Input;
   source?: PublicKeyish;
   destination?: PublicKeyish;
 }
 
-export type TokenWalletAction = "createAta" | "closeAta" | "wrapSol" | "unwrapSol";
+export type SendWalletOptions = SolSendWalletOptions | TokenSendWalletOptions;
 
-export interface TokenWalletOptions extends WalletActionOptions {
-  action: TokenWalletAction;
-  holder: PublicKeyish;
-  wallet: number;
-  mint?: PublicKeyish;
-  tokenProgram?: PublicKeyish;
-  amount?: U64Input;
-  rentReceiver?: PublicKeyish;
-}
+export type TokenWalletOptions =
+  | (WalletActionOptions & {
+      action: "createAta";
+      holder: PublicKeyish;
+      wallet: number;
+      mint: PublicKeyish;
+      tokenProgram?: PublicKeyish;
+    })
+  | (WalletActionOptions & {
+      action: "closeAta";
+      holder: PublicKeyish;
+      wallet: number;
+      mint: PublicKeyish;
+      tokenProgram?: PublicKeyish;
+      rentReceiver: PublicKeyish;
+    })
+  | (WalletActionOptions & {
+      action: "wrapSol";
+      holder: PublicKeyish;
+      wallet: number;
+      amount: U64Input;
+    })
+  | (WalletActionOptions & {
+      action: "unwrapSol";
+      holder: PublicKeyish;
+      wallet: number;
+    });
 
 export interface ExecuteWalletOptions extends ExecuteCpiCheckedParams, WalletActionOptions {
   holder: PublicKeyish;
@@ -233,18 +264,9 @@ export interface BuildTransactionOptions {
   instructions: TransactionInstruction[];
   recentBlockhash?: string;
   signer?: AgentVaultTransactionSigner;
+  signers?: AgentVaultTransactionSigner[];
   sign?: boolean;
   send?: boolean;
   commitment?: Commitment;
   sendOptions?: SendOptions;
-}
-
-export interface WalletInstructionSet {
-  initializeGlobalConfig(params: {
-    initializer: PublicKeyish;
-    registryProgram: PublicKeyish;
-    collection: PublicKeyish;
-    feeTreasury: PublicKeyish;
-    vaultActivationFeeLamports: U64Input;
-  }): TransactionInstruction;
 }

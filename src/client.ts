@@ -23,6 +23,9 @@ export class AgentVaultClient {
     if (config.signer !== undefined) {
       walletParams.signer = config.signer;
     }
+    if (config.allowUnverifiedDeployment !== undefined) {
+      walletParams.allowUnverifiedDeployment = config.allowUnverifiedDeployment;
+    }
 
     this.wallets = new AgentVaultWalletsClient(config.connection, walletParams);
     this.identities = new AgentVaultIdentitiesClient(this.wallets.pdas, config.identity);

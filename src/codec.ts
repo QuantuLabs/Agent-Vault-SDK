@@ -3,7 +3,20 @@ import { LABEL_LENGTH } from "./constants.js";
 import type { PublicKeyish, U64Input } from "./types.js";
 
 export function toPublicKey(value: PublicKeyish): PublicKey {
-  return value instanceof PublicKey ? value : new PublicKey(value);
+  if (value instanceof PublicKey) {
+    return value;
+  }
+  if (typeof value === "object" && value !== null && "toBase58" in value && typeof value.toBase58 === "function") {
+    return new PublicKey(value.toBase58());
+  }
+  return new PublicKey(value);
+}
+
+export function u8(value: number, label = "u8 value"): number {
+  if (!Number.isInteger(value) || value < 0 || value > 0xff) {
+    throw new RangeError(`${label} out of range`);
+  }
+  return value;
 }
 
 export function u16Le(value: number): Buffer {
@@ -25,6 +38,9 @@ export function u32Le(value: number): Buffer {
 }
 
 export function u64Le(value: U64Input): Buffer {
+  if (typeof value === "number" && (!Number.isSafeInteger(value) || value < 0)) {
+    throw new RangeError("u64 number input must be a non-negative safe integer; use bigint or string for large values");
+  }
   const bigint = typeof value === "bigint" ? value : BigInt(value);
   if (bigint < 0n || bigint > 0xffff_ffff_ffff_ffffn) {
     throw new RangeError("u64 value out of range");
@@ -35,9 +51,16 @@ export function u64Le(value: U64Input): Buffer {
 }
 
 export function encodeLabel(label: string | Uint8Array = ""): Buffer {
+  if (typeof label === "string" && label.includes("\0")) {
+    throw new RangeError("label string must not contain NUL bytes");
+  }
   const bytes = typeof label === "string" ? Buffer.from(label, "utf8") : Buffer.from(label);
   if (bytes.length > LABEL_LENGTH) {
     throw new RangeError(`label must fit in ${LABEL_LENGTH} bytes`);
+  }
+  const nul = bytes.indexOf(0);
+  if (nul !== -1 && bytes.subarray(nul).some((byte) => byte !== 0)) {
+    throw new RangeError("label bytes must not contain nonzero bytes after the first NUL");
   }
   const out = Buffer.alloc(LABEL_LENGTH);
   bytes.copy(out);

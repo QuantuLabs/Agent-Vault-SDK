@@ -1,6 +1,6 @@
-import { PublicKey, SystemProgram, type AccountInfo, type Connection, type TransactionInstruction } from "@solana/web3.js";
+import { PublicKey, SystemProgram, TransactionInstruction, type AccountInfo, type Connection } from "@solana/web3.js";
 import { compareGlobalConfigToManifest, parseGlobalConfig, parseVaultConfig, parseWallet } from "./accounts.js";
-import { DEVNET_RELEASE_MANIFEST, TOKEN_PROGRAM_ID, WALLET_LENGTH } from "./constants.js";
+import { DEVNET_RELEASE_MANIFEST, NATIVE_MINT_ID, SPL_TOKEN_SYNC_NATIVE_TAG, TOKEN_PROGRAM_ID, WALLET_LENGTH } from "./constants.js";
 import { AgentVaultInstructions } from "./instructions.js";
 import { executeTransaction } from "./transactions.js";
 import { toPublicKey } from "./codec.js";
@@ -42,13 +42,16 @@ export class AgentVaultWalletsClient {
       registryProgram?: PublicKeyish;
       releaseManifest?: AgentVaultReleaseManifest;
       signer?: AgentVaultTransactionSigner;
+      allowUnverifiedDeployment?: boolean;
     } = {},
   ) {
     this.signer = params.signer;
+    this.allowUnverifiedDeployment = params.allowUnverifiedDeployment ?? false;
     this.instructions = new AgentVaultInstructions(params);
   }
 
   private readonly signer: AgentVaultTransactionSigner | undefined;
+  private readonly allowUnverifiedDeployment: boolean;
 
   get pdas() {
     return this.instructions.pdas;
@@ -85,13 +88,13 @@ export class AgentVaultWalletsClient {
 
   async list(agentAsset: PublicKeyish, options: ListWalletsOptions = {}): Promise<WalletRecord[]> {
     const asset = toPublicKey(agentAsset);
+    const startIndex = validateNonNegativeInteger(options.startIndex ?? 0, "startIndex");
+    const limit = validateNonNegativeInteger(options.limit ?? DEFAULT_LIST_LIMIT, "limit");
+    const chunkSize = validateChunkSize(options.chunkSize ?? DEFAULT_CHUNK_SIZE);
     const vault = await this.getVault(asset);
     if (!vault) {
       return [];
     }
-    const startIndex = options.startIndex ?? 0;
-    const limit = options.limit ?? DEFAULT_LIST_LIMIT;
-    const chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
     const endIndex = Math.min(vault.walletCount, startIndex + limit);
     const records: WalletRecord[] = [];
 
@@ -145,6 +148,7 @@ export class AgentVaultWalletsClient {
       instructions: setup.instructions,
     };
     applyTransactionOptions(transactionOptions, options);
+    this.assertWriteAllowed(options);
     const prepared = await executeTransaction(this.connection, transactionOptions, this.signer);
 
     return {
@@ -204,11 +208,12 @@ export class AgentVaultWalletsClient {
 
   async token(agentAsset: PublicKeyish, options: TokenWalletOptions): Promise<WalletActionPlan> {
     if (options.action === "wrapSol") {
-      if (options.amount === undefined) {
-        throw new Error("amount is required for wrapSol");
-      }
-      return this.prepareAction(
-        this.instructions.wrapSol(agentAsset, options.holder, options.wallet, options.amount),
+      const wsolAta = this.ataAddress(agentAsset, options.wallet, NATIVE_MINT_ID, TOKEN_PROGRAM_ID);
+      return this.prepareActions(
+        [
+          this.instructions.wrapSol(agentAsset, options.holder, options.wallet, options.amount),
+          syncNativeInstruction(wsolAta),
+        ],
         options.holder,
         options,
       );
@@ -220,17 +225,11 @@ export class AgentVaultWalletsClient {
         options,
       );
     }
-    if (options.mint === undefined) {
-      throw new Error("mint is required for token ATA actions");
-    }
     if (options.action === "createAta") {
       const instruction = options.tokenProgram === undefined
         ? this.instructions.createAta(agentAsset, options.holder, options.wallet, options.mint)
         : this.instructions.createAta(agentAsset, options.holder, options.wallet, options.mint, options.tokenProgram);
       return this.prepareAction(instruction, options.holder, options);
-    }
-    if (options.rentReceiver === undefined) {
-      throw new Error("rentReceiver is required for closeAta");
     }
     return this.prepareAction(
       this.instructions.closeAta(
@@ -272,6 +271,22 @@ export class AgentVaultWalletsClient {
       };
     }
 
+    const programInfo = await this.connection.getAccountInfo(expectedProgramId);
+    if (!programInfo) {
+      return {
+        ok: false,
+        status: "missing",
+        issues: [`program missing at ${expectedProgramId.toBase58()}`],
+      };
+    }
+    const deploymentIssues: string[] = [];
+    if (!programInfo.executable) {
+      deploymentIssues.push(`program account is not executable at ${expectedProgramId.toBase58()}`);
+    }
+    if (manifest.deploymentStatus !== "deployed") {
+      deploymentIssues.push(`manifest deployment status is ${manifest.deploymentStatus}`);
+    }
+
     const globalConfig = this.pdas.globalConfig()[0];
     const info = await this.connection.getAccountInfo(globalConfig);
     if (!info) {
@@ -282,7 +297,7 @@ export class AgentVaultWalletsClient {
       };
     }
     const parsed = parseGlobalConfig(Buffer.from(info.data));
-    const issues = compareGlobalConfigToManifest(parsed, manifest);
+    const issues = [...deploymentIssues, ...compareGlobalConfigToManifest(parsed, manifest)];
     return {
       ok: issues.length === 0,
       status: issues.length === 0 ? "verified" : "mismatch",
@@ -333,16 +348,41 @@ export class AgentVaultWalletsClient {
     defaultFeePayer: PublicKeyish,
     options: WalletActionOptions,
   ): Promise<WalletActionPlan> {
+    return this.prepareActions([instruction], defaultFeePayer, options);
+  }
+
+  private async prepareActions(
+    instructions: TransactionInstruction[],
+    defaultFeePayer: PublicKeyish,
+    options: WalletActionOptions,
+  ): Promise<WalletActionPlan> {
     const transactionOptions: BuildTransactionOptions = {
       feePayer: options.feePayer ?? defaultFeePayer,
-      instructions: [instruction],
+      instructions,
     };
     applyTransactionOptions(transactionOptions, options);
+    this.assertWriteAllowed(options);
 
     return {
-      instruction,
+      instruction: instructions[0] as TransactionInstruction,
+      instructions,
       ...(await executeTransaction(this.connection, transactionOptions, this.signer)),
     };
+  }
+
+  private assertWriteAllowed(options: WalletActionOptions): void {
+    if (options.send === false || options.allowUnverifiedDeployment || this.allowUnverifiedDeployment) {
+      return;
+    }
+    const manifest = this.instructions.releaseManifest;
+    if (manifest.cluster === "mainnet") {
+      throw new Error("mainnet writes require verified deployment; pass allowUnverifiedDeployment only for explicit unsafe testing");
+    }
+    if (manifest.deploymentStatus !== "deployed") {
+      throw new Error(
+        `Agent Vault ${manifest.cluster} manifest is ${manifest.deploymentStatus}; verify deployment or pass allowUnverifiedDeployment for local/devnet testing`,
+      );
+    }
   }
 
   private recordFromAccount(
@@ -365,7 +405,22 @@ export class AgentVaultWalletsClient {
       };
     }
     if (info.owner.equals(this.instructions.programId) && info.data.length === WALLET_LENGTH) {
-      const wallet = parseWallet(Buffer.from(info.data));
+      let wallet;
+      try {
+        wallet = parseWallet(Buffer.from(info.data));
+      } catch {
+        return {
+          agentAsset,
+          index,
+          address,
+          exists: false,
+          dataStatus: "invalid",
+          label: null,
+          lamports: info.lamports,
+          account: null,
+          rawAccount: info,
+        };
+      }
       return {
         agentAsset,
         index,
@@ -400,6 +455,9 @@ function applyTransactionOptions(target: BuildTransactionOptions, options: Walle
   if (options.signer !== undefined) {
     target.signer = options.signer;
   }
+  if (options.signers !== undefined) {
+    target.signers = options.signers;
+  }
   if (options.sign !== undefined) {
     target.sign = options.sign;
   }
@@ -412,4 +470,26 @@ function applyTransactionOptions(target: BuildTransactionOptions, options: Walle
   if (options.sendOptions !== undefined) {
     target.sendOptions = options.sendOptions;
   }
+}
+
+function syncNativeInstruction(wsolAccount: PublicKey): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: TOKEN_PROGRAM_ID,
+    keys: [{ pubkey: wsolAccount, isSigner: false, isWritable: true }],
+    data: Buffer.from([SPL_TOKEN_SYNC_NATIVE_TAG]),
+  });
+}
+
+function validateNonNegativeInteger(value: number, label: string): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new RangeError(`${label} must be a non-negative integer`);
+  }
+  return value;
+}
+
+function validateChunkSize(value: number): number {
+  if (!Number.isInteger(value) || value < 1 || value > DEFAULT_CHUNK_SIZE) {
+    throw new RangeError(`chunkSize must be an integer between 1 and ${DEFAULT_CHUNK_SIZE}`);
+  }
+  return value;
 }

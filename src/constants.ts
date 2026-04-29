@@ -34,6 +34,14 @@ export const LABEL_LENGTH = 16;
 export const GLOBAL_CONFIG_LENGTH = 160;
 export const VAULT_CONFIG_LENGTH = 24;
 export const WALLET_LENGTH = 32;
+export const ACCOUNT_VERSION_V0 = 0;
+export const DISCRIMINATOR_GLOBAL_CONFIG = Buffer.from("AVGLBCFG", "ascii");
+export const DISCRIMINATOR_VAULT_CONFIG = Buffer.from("AVAGTCFG", "ascii");
+export const DISCRIMINATOR_WALLET = Buffer.from("AVWALLT0", "ascii");
+export const MAX_CPI_ACCOUNTS = 64;
+export const MAX_CPI_IX_DATA_LEN = 1024;
+export const MAX_POST_CHECKS = 8;
+export const SPL_TOKEN_SYNC_NATIVE_TAG = 17;
 
 export const TOKEN_PROGRAM_KIND = {
   tokenkeg: 0,

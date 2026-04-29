@@ -31,15 +31,15 @@ export async function prepareTransaction(
     lastValidBlockHeight = latest.lastValidBlockHeight;
   }
 
-  const signer = options.signer ?? defaultSigner;
-  const shouldSign = options.sign !== false && signer !== undefined;
+  const signers = resolveSigners(options, defaultSigner);
+  const shouldSign = options.sign !== false && signers.length > 0;
   const transaction = buildTransaction({
     ...options,
     recentBlockhash: blockhash,
   });
 
   if (shouldSign) {
-    await signTransaction(transaction, signer);
+    await signTransaction(transaction, signers);
   }
 
   return {
@@ -47,7 +47,8 @@ export async function prepareTransaction(
     blockhash,
     lastValidBlockHeight,
     signed: shouldSign,
-    signer: signerPublicKey(signer),
+    signer: signerPublicKey(signers[0]),
+    signers: signerPublicKeys(signers),
   };
 }
 
@@ -88,6 +89,9 @@ export async function executeTransaction(
         },
         options.commitment,
       );
+  if (confirmation.value.err !== null) {
+    throw new Error(`transaction ${signature} failed confirmation: ${JSON.stringify(confirmation.value.err)}`);
+  }
 
   return {
     ...prepared,
@@ -97,13 +101,43 @@ export async function executeTransaction(
   };
 }
 
-async function signTransaction(transaction: Transaction, signer: AgentVaultTransactionSigner): Promise<void> {
-  if ("signTransaction" in signer && typeof signer.signTransaction === "function") {
-    const signed = await signer.signTransaction(transaction);
-    transaction.signatures = signed.signatures;
-    return;
+function resolveSigners(options: BuildTransactionOptions, defaultSigner?: AgentVaultTransactionSigner): AgentVaultTransactionSigner[] {
+  const signers: AgentVaultTransactionSigner[] = [];
+  const primary = options.signer ?? defaultSigner;
+  if (primary !== undefined) {
+    signers.push(primary);
   }
-  transaction.partialSign(signer as Signer);
+  if (options.signers !== undefined) {
+    signers.push(...options.signers);
+  }
+  return dedupeSigners(signers);
+}
+
+function dedupeSigners(signers: AgentVaultTransactionSigner[]): AgentVaultTransactionSigner[] {
+  const seen = new Set<string>();
+  const out: AgentVaultTransactionSigner[] = [];
+  for (const signer of signers) {
+    const key = signerPublicKey(signer)?.toBase58();
+    if (key !== undefined) {
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+    }
+    out.push(signer);
+  }
+  return out;
+}
+
+async function signTransaction(transaction: Transaction, signers: AgentVaultTransactionSigner[]): Promise<void> {
+  for (const signer of signers) {
+    if ("signTransaction" in signer && typeof signer.signTransaction === "function") {
+      const signed = await signer.signTransaction(transaction);
+      transaction.signatures = signed.signatures;
+      continue;
+    }
+    transaction.partialSign(signer as Signer);
+  }
 }
 
 function signerPublicKey(signer: AgentVaultTransactionSigner | undefined): PublicKey | null {
@@ -111,4 +145,10 @@ function signerPublicKey(signer: AgentVaultTransactionSigner | undefined): Publi
     return null;
   }
   return signer.publicKey instanceof PublicKey ? signer.publicKey : new PublicKey(signer.publicKey);
+}
+
+function signerPublicKeys(signers: AgentVaultTransactionSigner[]): PublicKey[] {
+  return signers
+    .map((signer) => signerPublicKey(signer))
+    .filter((key): key is PublicKey => key !== null);
 }
