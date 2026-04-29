@@ -85,6 +85,12 @@ export interface WalletRecord {
   rawAccount: AccountInfo<Buffer> | null;
 }
 
+export interface WalletOverview {
+  vault: VaultConfig | null;
+  wallets: WalletRecord[];
+  nextIndex: number | null;
+}
+
 export interface ListWalletsOptions {
   startIndex?: number;
   limit?: number;
@@ -95,6 +101,19 @@ export interface ListWalletsOptions {
 export interface CreateWalletOptions {
   label?: string | Uint8Array;
   index?: number;
+}
+
+export interface SetupWalletsOptions {
+  labels?: Array<string | Uint8Array>;
+  includeVaultInit?: "auto" | "always" | "never";
+}
+
+export interface SetupWalletsPlan {
+  agentAsset: PublicKey;
+  vaultExists: boolean;
+  nextIndex: number;
+  walletAddresses: PublicKey[];
+  instructions: TransactionInstruction[];
 }
 
 export interface TransferSplParams {
@@ -124,6 +143,12 @@ export interface DeploymentVerification {
   ok: boolean;
   status: "verified" | "missing" | "mismatch";
   issues: string[];
+}
+
+export interface BuildTransactionOptions {
+  feePayer: PublicKeyish;
+  instructions: TransactionInstruction[];
+  recentBlockhash?: string;
 }
 
 export interface WalletInstructionSet {

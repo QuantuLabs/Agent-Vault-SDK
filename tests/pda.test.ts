@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, type Connection } from "@solana/web3.js";
 import {
   AGENT_VAULT_PROGRAM_ID,
   AGENT_VAULT_TAGS,
+  AgentVaultClient,
   AgentVaultInstructions,
   AgentVaultPdas,
   encodeLabel,
@@ -39,3 +40,29 @@ assert.deepEqual(createWallet.keys.map((key) => key.pubkey.toBase58()), [
   agentAsset.toBase58(),
   "11111111111111111111111111111111",
 ]);
+
+const connection = {
+  getAccountInfo: async () => null,
+  getMultipleAccountsInfo: async () => [],
+} as unknown as Connection;
+const client = AgentVaultClient.devnet({ connection });
+const setup = await client.wallets.setup(agentAsset, holder, {
+  labels: ["trading", "treasury"],
+});
+
+assert.equal(client.wallets.address(agentAsset, 0).toBase58(), wallet0.toBase58());
+assert.equal(setup.vaultExists, false);
+assert.equal(setup.nextIndex, 0);
+assert.equal(setup.walletAddresses.length, 2);
+assert.equal(setup.instructions.length, 3);
+assert.equal(setup.instructions[0]?.data[0], AGENT_VAULT_TAGS.initVaultConfig);
+assert.equal(setup.instructions[1]?.data[0], AGENT_VAULT_TAGS.createWallet);
+assert.equal(setup.instructions[2]?.data[0], AGENT_VAULT_TAGS.createWallet);
+
+const transaction = client.transaction({
+  feePayer: holder,
+  recentBlockhash: "11111111111111111111111111111111",
+  instructions: setup.instructions,
+});
+assert.equal(transaction.feePayer?.toBase58(), holder.toBase58());
+assert.equal(transaction.instructions.length, setup.instructions.length);

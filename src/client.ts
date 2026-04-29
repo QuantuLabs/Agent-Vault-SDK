@@ -1,8 +1,9 @@
 import { AgentVaultIdentitiesClient } from "./identities.js";
 import { AgentVaultWalletsClient } from "./wallets.js";
+import { buildTransaction } from "./transactions.js";
 import { toPublicKey } from "./codec.js";
 import { AGENT_VAULT_PROGRAM_ID, DEVNET_RELEASE_MANIFEST } from "./constants.js";
-import type { AgentVaultClientConfig } from "./types.js";
+import type { AgentVaultClientConfig, BuildTransactionOptions } from "./types.js";
 
 export class AgentVaultClient {
   readonly identities: AgentVaultIdentitiesClient;
@@ -21,6 +22,17 @@ export class AgentVaultClient {
       releaseManifest,
     });
     this.identities = new AgentVaultIdentitiesClient(this.wallets.pdas, config.identity);
+  }
+
+  static devnet(config: Omit<AgentVaultClientConfig, "releaseManifest">): AgentVaultClient {
+    return new AgentVaultClient({
+      ...config,
+      releaseManifest: DEVNET_RELEASE_MANIFEST,
+    });
+  }
+
+  transaction(options: BuildTransactionOptions) {
+    return buildTransaction(options);
   }
 }
 

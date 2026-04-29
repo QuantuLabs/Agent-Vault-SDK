@@ -1,6 +1,6 @@
 import { PublicKey, SystemProgram, type AccountInfo, type Connection, type TransactionInstruction } from "@solana/web3.js";
 import { compareGlobalConfigToManifest, parseGlobalConfig, parseVaultConfig, parseWallet } from "./accounts.js";
-import { DEVNET_RELEASE_MANIFEST, WALLET_LENGTH } from "./constants.js";
+import { DEVNET_RELEASE_MANIFEST, TOKEN_PROGRAM_ID, WALLET_LENGTH } from "./constants.js";
 import { AgentVaultInstructions } from "./instructions.js";
 import { toPublicKey } from "./codec.js";
 import type {
@@ -10,9 +10,12 @@ import type {
   ExecuteCpiCheckedParams,
   ListWalletsOptions,
   PublicKeyish,
+  SetupWalletsOptions,
+  SetupWalletsPlan,
   TransferSplParams,
   U64Input,
   VaultConfig,
+  WalletOverview,
   WalletRecord,
 } from "./types.js";
 
@@ -35,6 +38,19 @@ export class AgentVaultWalletsClient {
 
   get pdas() {
     return this.instructions.pdas;
+  }
+
+  address(agentAsset: PublicKeyish, index: number): PublicKey {
+    return this.pdas.wallet(agentAsset, index)[0];
+  }
+
+  ataAddress(
+    agentAsset: PublicKeyish,
+    index: number,
+    mint: PublicKeyish,
+    tokenProgram: PublicKeyish = TOKEN_PROGRAM_ID,
+  ): PublicKey {
+    return this.pdas.walletAta(this.address(agentAsset, index), mint, tokenProgram)[0];
   }
 
   async getVault(agentAsset: PublicKeyish): Promise<VaultConfig | null> {
@@ -100,9 +116,71 @@ export class AgentVaultWalletsClient {
     });
   }
 
+  async overview(agentAsset: PublicKeyish, options: ListWalletsOptions = {}): Promise<WalletOverview> {
+    const vault = await this.getVault(agentAsset);
+    if (!vault) {
+      return {
+        vault: null,
+        wallets: [],
+        nextIndex: null,
+      };
+    }
+    return {
+      vault,
+      wallets: await this.list(agentAsset, options),
+      nextIndex: vault.walletCount,
+    };
+  }
+
+  async setup(
+    agentAsset: PublicKeyish,
+    holder: PublicKeyish,
+    options: SetupWalletsOptions = {},
+  ): Promise<SetupWalletsPlan> {
+    const asset = toPublicKey(agentAsset);
+    const vault = await this.getVault(asset);
+    const includeVaultInit = options.includeVaultInit ?? "auto";
+    const labels = options.labels ?? [""];
+
+    if (!vault && includeVaultInit === "never") {
+      throw new Error("vault config not found and includeVaultInit is set to never");
+    }
+
+    const instructions: TransactionInstruction[] = [];
+    const shouldInitVault = includeVaultInit === "always" || (!vault && includeVaultInit === "auto");
+    if (shouldInitVault) {
+      instructions.push(this.buildInitVault(asset, holder));
+    }
+
+    const nextIndex = vault?.walletCount ?? 0;
+    const walletAddresses: PublicKey[] = [];
+    for (let offset = 0; offset < labels.length; offset += 1) {
+      const index = nextIndex + offset;
+      const label = labels[offset] ?? "";
+      walletAddresses.push(this.address(asset, index));
+      instructions.push(this.buildCreate(asset, holder, { index, label }));
+    }
+
+    return {
+      agentAsset: asset,
+      vaultExists: vault !== null,
+      nextIndex,
+      walletAddresses,
+      instructions,
+    };
+  }
+
   async create(agentAsset: PublicKeyish, holder: PublicKeyish, options: Omit<CreateWalletOptions, "index"> = {}): Promise<TransactionInstruction> {
     const vault = await this.requireVault(agentAsset);
     return this.buildCreate(agentAsset, holder, { ...options, index: vault.walletCount });
+  }
+
+  async createWallet(agentAsset: PublicKeyish, holder: PublicKeyish, options: Omit<CreateWalletOptions, "index"> = {}): Promise<TransactionInstruction> {
+    return this.create(agentAsset, holder, options);
+  }
+
+  initVault(agentAsset: PublicKeyish, holder: PublicKeyish): TransactionInstruction {
+    return this.buildInitVault(agentAsset, holder);
   }
 
   buildInitVault(agentAsset: PublicKeyish, holder: PublicKeyish): TransactionInstruction {
@@ -116,20 +194,40 @@ export class AgentVaultWalletsClient {
     return this.instructions.createWallet(agentAsset, holder, options.index, options.label);
   }
 
+  updateLabel(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, label: string | Uint8Array): TransactionInstruction {
+    return this.buildUpdateLabel(agentAsset, holder, index, label);
+  }
+
   buildUpdateLabel(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, label: string | Uint8Array): TransactionInstruction {
     return this.instructions.updateWalletLabel(agentAsset, holder, index, label);
+  }
+
+  depositSol(agentAsset: PublicKeyish, index: number, funder: PublicKeyish, amount: U64Input): TransactionInstruction {
+    return this.buildDepositSol(agentAsset, index, funder, amount);
   }
 
   buildDepositSol(agentAsset: PublicKeyish, index: number, funder: PublicKeyish, amount: U64Input): TransactionInstruction {
     return this.instructions.depositSol(agentAsset, index, funder, amount);
   }
 
+  withdrawSol(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, amount: U64Input, destination: PublicKeyish): TransactionInstruction {
+    return this.buildWithdrawSol(agentAsset, holder, index, amount, destination);
+  }
+
   buildWithdrawSol(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, amount: U64Input, destination: PublicKeyish): TransactionInstruction {
     return this.instructions.withdrawSol(agentAsset, holder, index, amount, destination);
   }
 
+  transferSol(agentAsset: PublicKeyish, holder: PublicKeyish, fromIndex: number, toIndex: number, amount: U64Input): TransactionInstruction {
+    return this.buildTransferSol(agentAsset, holder, fromIndex, toIndex, amount);
+  }
+
   buildTransferSol(agentAsset: PublicKeyish, holder: PublicKeyish, fromIndex: number, toIndex: number, amount: U64Input): TransactionInstruction {
     return this.instructions.transferSol(agentAsset, holder, fromIndex, toIndex, amount);
+  }
+
+  createAta(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, mint: PublicKeyish, tokenProgram?: PublicKeyish): TransactionInstruction {
+    return this.buildCreateAta(agentAsset, holder, index, mint, tokenProgram);
   }
 
   buildCreateAta(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, mint: PublicKeyish, tokenProgram?: PublicKeyish): TransactionInstruction {
@@ -138,28 +236,56 @@ export class AgentVaultWalletsClient {
       : this.instructions.createAta(agentAsset, holder, index, mint);
   }
 
+  transferSpl(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, params: TransferSplParams): TransactionInstruction {
+    return this.buildTransferSpl(agentAsset, holder, index, params);
+  }
+
   buildTransferSpl(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, params: TransferSplParams): TransactionInstruction {
     return this.instructions.transferSpl(agentAsset, holder, index, params);
+  }
+
+  wrapSol(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, amount: U64Input): TransactionInstruction {
+    return this.buildWrapSol(agentAsset, holder, index, amount);
   }
 
   buildWrapSol(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, amount: U64Input): TransactionInstruction {
     return this.instructions.wrapSol(agentAsset, holder, index, amount);
   }
 
+  unwrapSol(agentAsset: PublicKeyish, holder: PublicKeyish, index: number): TransactionInstruction {
+    return this.buildUnwrapSol(agentAsset, holder, index);
+  }
+
   buildUnwrapSol(agentAsset: PublicKeyish, holder: PublicKeyish, index: number): TransactionInstruction {
     return this.instructions.unwrapSol(agentAsset, holder, index);
+  }
+
+  closeAta(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, mint: PublicKeyish, tokenProgram: PublicKeyish, rentReceiver: PublicKeyish): TransactionInstruction {
+    return this.buildCloseAta(agentAsset, holder, index, mint, tokenProgram, rentReceiver);
   }
 
   buildCloseAta(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, mint: PublicKeyish, tokenProgram: PublicKeyish, rentReceiver: PublicKeyish): TransactionInstruction {
     return this.instructions.closeAta(agentAsset, holder, index, mint, tokenProgram, rentReceiver);
   }
 
+  executeCpiChecked(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, params: ExecuteCpiCheckedParams): TransactionInstruction {
+    return this.buildExecuteCpiChecked(agentAsset, holder, index, params);
+  }
+
   buildExecuteCpiChecked(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, params: ExecuteCpiCheckedParams): TransactionInstruction {
     return this.instructions.executeCpiChecked(agentAsset, holder, index, params);
   }
 
+  reopenForRecovery(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, options: { label?: string | Uint8Array } = {}): TransactionInstruction {
+    return this.buildReopenForRecovery(agentAsset, holder, index, options);
+  }
+
   buildReopenForRecovery(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, options: { label?: string | Uint8Array } = {}): TransactionInstruction {
     return this.instructions.reopenForRecovery(agentAsset, holder, index, options.label);
+  }
+
+  close(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, rentReceiver: PublicKeyish): TransactionInstruction {
+    return this.buildClose(agentAsset, holder, index, rentReceiver);
   }
 
   buildClose(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, rentReceiver: PublicKeyish): TransactionInstruction {
