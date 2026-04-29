@@ -53,7 +53,7 @@ export const DEVNET_RELEASE_MANIFEST = {
   name: "Agent Vault",
   release: "devnet-v0.1.0-candidate",
   cluster: "devnet",
-  deploymentStatus: "candidate-not-deployed",
+  deploymentStatus: "deployed",
   program: {
     id: AGENT_VAULT_PROGRAM_ID.toBase58(),
     globalConfigPda: "Fv7ffwFuAZBiCZ6dpBPKEgYEGMXpSArmqvaqfH35Gbod",

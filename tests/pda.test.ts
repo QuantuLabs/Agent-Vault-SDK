@@ -7,6 +7,7 @@ import {
   AgentVaultInstructions,
   AgentVaultPdas,
   DISCRIMINATOR_WALLET,
+  DEVNET_RELEASE_MANIFEST,
   NATIVE_MINT_ID,
   SPL_TOKEN_SYNC_NATIVE_TAG,
   TOKEN_PROGRAM_ID,
@@ -81,7 +82,14 @@ const connection = {
   }),
 } as unknown as Connection;
 const client = AgentVaultClient.devnet({ connection, signer: holderSigner, allowUnverifiedDeployment: true });
-const strictClient = AgentVaultClient.devnet({ connection, signer: holderSigner });
+const strictClient = new AgentVaultClient({
+  connection,
+  signer: holderSigner,
+  releaseManifest: {
+    ...DEVNET_RELEASE_MANIFEST,
+    deploymentStatus: "candidate-not-deployed",
+  },
+});
 const setupPreview = await client.wallets.setup(agentAsset, holder, {
   labels: ["trading", "treasury"],
   send: false,

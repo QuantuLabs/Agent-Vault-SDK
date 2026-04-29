@@ -37,7 +37,7 @@ export class AgentVaultIdentitiesClient {
     assignDefined(options, "assetPubkey", params.assetPubkey);
 
     const registerAgent = identity.registerAgent as RegisterAgent;
-    const result = await registerAgent(params.uri, options);
+    const result = await registerAgent.call(identity, params.uri, options);
     const agentAsset = extractAgentAsset(result, params.assetPubkey);
     return { agentAsset, result };
   }

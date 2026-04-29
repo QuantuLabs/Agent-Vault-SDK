@@ -151,7 +151,7 @@ async function main(): Promise<void> {
   assert.ok(internal.signature, "internal transfer signature missing");
   console.log(`internal transfer: ${internal.signature}`);
 
-  const recipient = Keypair.generate().publicKey;
+  const recipient = signer.publicKey;
   const withdrawPreview = await vault.wallets.send(agentAsset, {
     holder: signer.publicKey,
     from: 1,
@@ -242,6 +242,6 @@ function expandPath(path: string): string {
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
   process.exitCode = 1;
 });

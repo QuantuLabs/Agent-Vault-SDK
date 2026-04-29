@@ -2,7 +2,7 @@
 
 TypeScript SDK for Agent Vault, the 8004-aware multi-wallet PDA vault on Solana.
 
-This package is WIP. It targets the current devnet candidate program and should
+This package is WIP. It targets the current deployed devnet candidate and should
 not be used with valuable assets until a mainnet release is published.
 
 ## Install
@@ -43,9 +43,9 @@ Top-level wallet methods merge common instructions, fetch a fresh blockhash,
 sign with `client.signer`, send the transaction, confirm it, and return the
 signature plus confirmation details.
 
-Write methods fail closed while the bundled release manifest is marked
-`candidate-not-deployed`. Use `allowUnverifiedDeployment` only for explicit
-local/devnet testing against a deployment you control.
+Write methods fail closed if the bundled release manifest is not marked
+`deployed`. Use `allowUnverifiedDeployment` only for explicit local/devnet
+testing against a deployment you control.
 
 To return a transaction for external signing instead:
 
