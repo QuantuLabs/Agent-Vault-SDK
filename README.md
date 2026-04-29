@@ -27,7 +27,7 @@ const { agentAsset } = await vault.identities.create({
   uri: "ipfs://...",
 });
 
-const setup = await vault.wallets.setupTx(agentAsset, holder, {
+const setup = await vault.wallets.setup(agentAsset, holder, {
   labels: ["treasury", "trading"],
 });
 
@@ -69,7 +69,7 @@ const wallets = await vault.wallets.list(agentAsset, { limit: 25 });
 Create the vault config and multiple wallets in one plan:
 
 ```ts
-const plan = await vault.wallets.setupTx(agentAsset, holder, {
+const plan = await vault.wallets.setup(agentAsset, holder, {
   labels: ["treasury", "trading", "ops"],
 });
 
@@ -79,7 +79,7 @@ await wallet.sendTransaction(plan.transaction, connection);
 Create the next wallet after a vault already exists:
 
 ```ts
-const plan = await vault.wallets.createWalletTx(agentAsset, holder, {
+const plan = await vault.wallets.createWallet(agentAsset, holder, {
   label: "defi",
 });
 
@@ -136,9 +136,10 @@ const ix = vault.wallets.executeCpiChecked(agentAsset, holder, 0, {
 });
 ```
 
-Use the short methods for normal app code. The lower-level `build*` methods
-remain available when you need explicit instruction naming or fixed wallet
-indexes.
+Use the short methods for normal app code. When you only need raw instructions,
+use `setupInstructions()` or `createWalletInstruction()`. The lower-level
+`build*` methods remain available when you need explicit instruction naming or
+fixed wallet indexes.
 
 ## RPC Model
 

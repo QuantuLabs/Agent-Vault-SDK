@@ -50,36 +50,36 @@ const connection = {
   }),
 } as unknown as Connection;
 const client = AgentVaultClient.devnet({ connection });
-const setup = await client.wallets.setup(agentAsset, holder, {
+const setupInstructions = await client.wallets.setupInstructions(agentAsset, holder, {
   labels: ["trading", "treasury"],
 });
 
 assert.equal(client.wallets.address(agentAsset, 0).toBase58(), wallet0.toBase58());
-assert.equal(setup.vaultExists, false);
-assert.equal(setup.nextIndex, 0);
-assert.equal(setup.walletAddresses.length, 2);
-assert.equal(setup.instructions.length, 3);
-assert.equal(setup.instructions[0]?.data[0], AGENT_VAULT_TAGS.initVaultConfig);
-assert.equal(setup.instructions[1]?.data[0], AGENT_VAULT_TAGS.createWallet);
-assert.equal(setup.instructions[2]?.data[0], AGENT_VAULT_TAGS.createWallet);
+assert.equal(setupInstructions.vaultExists, false);
+assert.equal(setupInstructions.nextIndex, 0);
+assert.equal(setupInstructions.walletAddresses.length, 2);
+assert.equal(setupInstructions.instructions.length, 3);
+assert.equal(setupInstructions.instructions[0]?.data[0], AGENT_VAULT_TAGS.initVaultConfig);
+assert.equal(setupInstructions.instructions[1]?.data[0], AGENT_VAULT_TAGS.createWallet);
+assert.equal(setupInstructions.instructions[2]?.data[0], AGENT_VAULT_TAGS.createWallet);
 
 const transaction = client.transaction({
   feePayer: holder,
   recentBlockhash: "11111111111111111111111111111111",
-  instructions: setup.instructions,
+  instructions: setupInstructions.instructions,
 });
 assert.equal(transaction.feePayer?.toBase58(), holder.toBase58());
-assert.equal(transaction.instructions.length, setup.instructions.length);
+assert.equal(transaction.instructions.length, setupInstructions.instructions.length);
 
-const setupTx = await client.wallets.setupTx(agentAsset, holder, {
+const setup = await client.wallets.setup(agentAsset, holder, {
   labels: ["treasury"],
 });
-assert.equal(setupTx.blockhash, "11111111111111111111111111111111");
-assert.equal(setupTx.lastValidBlockHeight, 123);
-assert.equal(setupTx.transaction.instructions.length, 2);
+assert.equal(setup.blockhash, "11111111111111111111111111111111");
+assert.equal(setup.lastValidBlockHeight, 123);
+assert.equal(setup.transaction.instructions.length, 2);
 
 const quickTx = await client.tx({
   feePayer: holder,
-  instructions: setup.instructions,
+  instructions: setupInstructions.instructions,
 });
-assert.equal(quickTx.instructions.length, setup.instructions.length);
+assert.equal(quickTx.instructions.length, setupInstructions.instructions.length);

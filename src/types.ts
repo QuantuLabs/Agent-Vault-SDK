@@ -98,12 +98,12 @@ export interface ListWalletsOptions {
   chunkSize?: number;
 }
 
-export interface CreateWalletOptions {
+export interface CreateWalletInstructionOptions {
   label?: string | Uint8Array;
   index?: number;
 }
 
-export interface SetupWalletsOptions {
+export interface SetupWalletInstructionsOptions {
   labels?: Array<string | Uint8Array>;
   includeVaultInit?: "auto" | "always" | "never";
 }
@@ -113,9 +113,9 @@ export interface TransactionPlanOptions {
   recentBlockhash?: string;
 }
 
-export interface SetupWalletsTxOptions extends SetupWalletsOptions, TransactionPlanOptions {}
+export interface SetupWalletOptions extends SetupWalletInstructionsOptions, TransactionPlanOptions {}
 
-export interface SetupWalletsPlan {
+export interface SetupWalletInstructionsPlan {
   agentAsset: PublicKey;
   vaultExists: boolean;
   nextIndex: number;
@@ -129,11 +129,11 @@ export interface PreparedVaultTransaction {
   lastValidBlockHeight: number | null;
 }
 
-export interface SetupWalletsTxPlan extends SetupWalletsPlan, PreparedVaultTransaction {}
+export interface SetupWalletPlan extends SetupWalletInstructionsPlan, PreparedVaultTransaction {}
 
-export interface CreateWalletTxOptions extends Omit<CreateWalletOptions, "index">, TransactionPlanOptions {}
+export interface CreateWalletOptions extends Omit<CreateWalletInstructionOptions, "index">, TransactionPlanOptions {}
 
-export interface CreateWalletTxPlan extends PreparedVaultTransaction {
+export interface CreateWalletPlan extends PreparedVaultTransaction {
   agentAsset: PublicKey;
   index: number;
   walletAddress: PublicKey;
