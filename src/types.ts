@@ -1,4 +1,4 @@
-import type { AccountInfo, Connection, PublicKey, TransactionInstruction } from "@solana/web3.js";
+import type { AccountInfo, Connection, PublicKey, Transaction, TransactionInstruction } from "@solana/web3.js";
 import type { SolanaSDK } from "8004-solana";
 
 export type PublicKeyish = PublicKey | string;
@@ -108,12 +108,36 @@ export interface SetupWalletsOptions {
   includeVaultInit?: "auto" | "always" | "never";
 }
 
+export interface TransactionPlanOptions {
+  feePayer?: PublicKeyish;
+  recentBlockhash?: string;
+}
+
+export interface SetupWalletsTxOptions extends SetupWalletsOptions, TransactionPlanOptions {}
+
 export interface SetupWalletsPlan {
   agentAsset: PublicKey;
   vaultExists: boolean;
   nextIndex: number;
   walletAddresses: PublicKey[];
   instructions: TransactionInstruction[];
+}
+
+export interface PreparedVaultTransaction {
+  transaction: Transaction;
+  blockhash: string;
+  lastValidBlockHeight: number | null;
+}
+
+export interface SetupWalletsTxPlan extends SetupWalletsPlan, PreparedVaultTransaction {}
+
+export interface CreateWalletTxOptions extends Omit<CreateWalletOptions, "index">, TransactionPlanOptions {}
+
+export interface CreateWalletTxPlan extends PreparedVaultTransaction {
+  agentAsset: PublicKey;
+  index: number;
+  walletAddress: PublicKey;
+  instruction: TransactionInstruction;
 }
 
 export interface TransferSplParams {

@@ -2,9 +2,13 @@ import { PublicKey, SystemProgram, type AccountInfo, type Connection, type Trans
 import { compareGlobalConfigToManifest, parseGlobalConfig, parseVaultConfig, parseWallet } from "./accounts.js";
 import { DEVNET_RELEASE_MANIFEST, TOKEN_PROGRAM_ID, WALLET_LENGTH } from "./constants.js";
 import { AgentVaultInstructions } from "./instructions.js";
+import { prepareTransaction } from "./transactions.js";
 import { toPublicKey } from "./codec.js";
 import type {
   AgentVaultReleaseManifest,
+  BuildTransactionOptions,
+  CreateWalletTxOptions,
+  CreateWalletTxPlan,
   CreateWalletOptions,
   DeploymentVerification,
   ExecuteCpiCheckedParams,
@@ -12,6 +16,8 @@ import type {
   PublicKeyish,
   SetupWalletsOptions,
   SetupWalletsPlan,
+  SetupWalletsTxOptions,
+  SetupWalletsTxPlan,
   TransferSplParams,
   U64Input,
   VaultConfig,
@@ -170,6 +176,27 @@ export class AgentVaultWalletsClient {
     };
   }
 
+  async setupTx(
+    agentAsset: PublicKeyish,
+    holder: PublicKeyish,
+    options: SetupWalletsTxOptions = {},
+  ): Promise<SetupWalletsTxPlan> {
+    const setup = await this.setup(agentAsset, holder, options);
+    const transactionOptions: BuildTransactionOptions = {
+      feePayer: options.feePayer ?? holder,
+      instructions: setup.instructions,
+    };
+    if (options.recentBlockhash !== undefined) {
+      transactionOptions.recentBlockhash = options.recentBlockhash;
+    }
+    const prepared = await prepareTransaction(this.connection, transactionOptions);
+
+    return {
+      ...setup,
+      ...prepared,
+    };
+  }
+
   async create(agentAsset: PublicKeyish, holder: PublicKeyish, options: Omit<CreateWalletOptions, "index"> = {}): Promise<TransactionInstruction> {
     const vault = await this.requireVault(agentAsset);
     return this.buildCreate(agentAsset, holder, { ...options, index: vault.walletCount });
@@ -177,6 +204,38 @@ export class AgentVaultWalletsClient {
 
   async createWallet(agentAsset: PublicKeyish, holder: PublicKeyish, options: Omit<CreateWalletOptions, "index"> = {}): Promise<TransactionInstruction> {
     return this.create(agentAsset, holder, options);
+  }
+
+  async createWalletTx(
+    agentAsset: PublicKeyish,
+    holder: PublicKeyish,
+    options: CreateWalletTxOptions = {},
+  ): Promise<CreateWalletTxPlan> {
+    const asset = toPublicKey(agentAsset);
+    const vault = await this.requireVault(asset);
+    const createOptions: CreateWalletOptions = {
+      index: vault.walletCount,
+    };
+    if (options.label !== undefined) {
+      createOptions.label = options.label;
+    }
+    const instruction = this.buildCreate(asset, holder, createOptions);
+    const transactionOptions: BuildTransactionOptions = {
+      feePayer: options.feePayer ?? holder,
+      instructions: [instruction],
+    };
+    if (options.recentBlockhash !== undefined) {
+      transactionOptions.recentBlockhash = options.recentBlockhash;
+    }
+    const prepared = await prepareTransaction(this.connection, transactionOptions);
+
+    return {
+      agentAsset: asset,
+      index: vault.walletCount,
+      walletAddress: this.address(asset, vault.walletCount),
+      instruction,
+      ...prepared,
+    };
   }
 
   initVault(agentAsset: PublicKeyish, holder: PublicKeyish): TransactionInstruction {

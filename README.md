@@ -27,20 +27,16 @@ const { agentAsset } = await vault.identities.create({
   uri: "ipfs://...",
 });
 
-const setup = await vault.wallets.setup(agentAsset, holder, {
+const setup = await vault.wallets.setupTx(agentAsset, holder, {
   labels: ["treasury", "trading"],
 });
 
-const { blockhash } = await connection.getLatestBlockhash();
-const tx = vault.transaction({
-  feePayer: holder,
-  recentBlockhash: blockhash,
-  instructions: setup.instructions,
-});
+const tx = setup.transaction;
 ```
 
-The SDK builds typed instructions and transactions. Your app or wallet adapter
-still owns signing, simulation, sending, and confirmation.
+The SDK merges common instructions and fetches a fresh blockhash for transaction
+plans. Your app or wallet adapter still owns signing, simulation, sending, and
+confirmation.
 
 ## API Shape
 
@@ -49,7 +45,7 @@ The root client is intentionally small:
 ```ts
 vault.identities
 vault.wallets
-vault.transaction(...)
+vault.tx(...)
 ```
 
 `vault.identities` delegates identity creation to `8004-solana`:
@@ -73,17 +69,21 @@ const wallets = await vault.wallets.list(agentAsset, { limit: 25 });
 Create the vault config and multiple wallets in one plan:
 
 ```ts
-const plan = await vault.wallets.setup(agentAsset, holder, {
+const plan = await vault.wallets.setupTx(agentAsset, holder, {
   labels: ["treasury", "trading", "ops"],
 });
+
+await wallet.sendTransaction(plan.transaction, connection);
 ```
 
 Create the next wallet after a vault already exists:
 
 ```ts
-const ix = await vault.wallets.createWallet(agentAsset, holder, {
+const plan = await vault.wallets.createWalletTx(agentAsset, holder, {
   label: "defi",
 });
+
+await wallet.sendTransaction(plan.transaction, connection);
 ```
 
 Move SOL:
@@ -92,6 +92,15 @@ Move SOL:
 const deposit = vault.wallets.depositSol(agentAsset, 0, payer, 1_000_000n);
 const withdraw = vault.wallets.withdrawSol(agentAsset, holder, 0, 500_000n, recipient);
 const transfer = vault.wallets.transferSol(agentAsset, holder, 0, 1, 250_000n);
+```
+
+Single-instruction flows can be wrapped into a transaction with `vault.tx()`:
+
+```ts
+const tx = await vault.tx({
+  feePayer: holder,
+  instructions: [deposit],
+});
 ```
 
 Use SPL / Token-2022 wallets:
@@ -127,8 +136,9 @@ const ix = vault.wallets.executeCpiChecked(agentAsset, holder, 0, {
 });
 ```
 
-The lower-level `build*` methods remain available when you need explicit
-instruction naming or fixed wallet indexes.
+Use the short methods for normal app code. The lower-level `build*` methods
+remain available when you need explicit instruction naming or fixed wallet
+indexes.
 
 ## RPC Model
 

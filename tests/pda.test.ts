@@ -44,6 +44,10 @@ assert.deepEqual(createWallet.keys.map((key) => key.pubkey.toBase58()), [
 const connection = {
   getAccountInfo: async () => null,
   getMultipleAccountsInfo: async () => [],
+  getLatestBlockhash: async () => ({
+    blockhash: "11111111111111111111111111111111",
+    lastValidBlockHeight: 123,
+  }),
 } as unknown as Connection;
 const client = AgentVaultClient.devnet({ connection });
 const setup = await client.wallets.setup(agentAsset, holder, {
@@ -66,3 +70,16 @@ const transaction = client.transaction({
 });
 assert.equal(transaction.feePayer?.toBase58(), holder.toBase58());
 assert.equal(transaction.instructions.length, setup.instructions.length);
+
+const setupTx = await client.wallets.setupTx(agentAsset, holder, {
+  labels: ["treasury"],
+});
+assert.equal(setupTx.blockhash, "11111111111111111111111111111111");
+assert.equal(setupTx.lastValidBlockHeight, 123);
+assert.equal(setupTx.transaction.instructions.length, 2);
+
+const quickTx = await client.tx({
+  feePayer: holder,
+  instructions: setup.instructions,
+});
+assert.equal(quickTx.instructions.length, setup.instructions.length);

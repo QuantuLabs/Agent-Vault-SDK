@@ -30,6 +30,8 @@ Target API:
 ```ts
 AgentVaultClient.devnet({ connection, identity })
 client.transaction({ feePayer, recentBlockhash, instructions })
+client.prepare({ feePayer, recentBlockhash, instructions })
+client.tx({ feePayer, recentBlockhash, instructions })
 
 client.identities.create({ uri, atomEnabled, collectionPointer })
 client.identities.getAgentAccountPda(agentAsset)
@@ -50,7 +52,9 @@ client.wallets.overview(agentAsset, { limit })
 client.wallets.list(agentAsset, { startIndex, limit, includeClosed })
 client.wallets.listAll(agentAsset)
 client.wallets.setup(agentAsset, holder, { labels, includeVaultInit })
+client.wallets.setupTx(agentAsset, holder, { labels, includeVaultInit, feePayer })
 client.wallets.createWallet(agentAsset, holder, { label })
+client.wallets.createWalletTx(agentAsset, holder, { label, feePayer })
 client.wallets.initVault(agentAsset, holder)
 client.wallets.updateLabel(agentAsset, holder, index, label)
 client.wallets.depositSol(agentAsset, index, funder, amount)
