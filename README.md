@@ -62,7 +62,6 @@ The root client is intentionally small:
 ```ts
 vault.identities
 vault.wallets
-vault.tx(...)
 ```
 
 `vault.identities` delegates identity creation to `8004-solana`:
@@ -72,13 +71,15 @@ const { agentAsset } = await vault.identities.create({ uri });
 const [agentAccount] = vault.identities.getAgentAccountPda(agentAsset);
 ```
 
-`vault.wallets` manages Agent Vault PDAs:
+`vault.wallets` has six high-level actions:
 
 ```ts
-const address = vault.wallets.address(agentAsset, 0);
-const ata = vault.wallets.ataAddress(agentAsset, 0, mint);
-const overview = await vault.wallets.overview(agentAsset);
-const wallets = await vault.wallets.list(agentAsset, { limit: 25 });
+vault.wallets.setup(...)
+vault.wallets.list(...)
+vault.wallets.fund(...)
+vault.wallets.send(...)
+vault.wallets.token(...)
+vault.wallets.execute(...)
 ```
 
 ## Common Flows
@@ -93,59 +94,81 @@ const plan = await vault.wallets.setup(agentAsset, holder, {
 console.log(plan.signature);
 ```
 
-Create the next wallet after a vault already exists:
+Add another wallet later with the same setup method:
 
 ```ts
-const plan = await vault.wallets.createWallet(agentAsset, holder, {
-  label: "defi",
+const plan = await vault.wallets.setup(agentAsset, holder, {
+  labels: ["defi"],
 });
 
-console.log(plan.walletAddress.toBase58(), plan.signature);
+console.log(plan.walletAddresses[0]?.toBase58(), plan.signature);
 ```
 
-Move SOL:
+Fund a wallet with SOL:
 
 ```ts
-const deposit = await vault.wallets.depositSol(agentAsset, 0, payer, 1_000_000n);
-const withdraw = await vault.wallets.withdrawSol(agentAsset, holder, 0, 500_000n, recipient);
-const transfer = await vault.wallets.transferSol(agentAsset, holder, 0, 1, 250_000n);
+const deposit = await vault.wallets.fund(agentAsset, {
+  wallet: 0,
+  payer,
+  amount: 1_000_000n,
+});
 ```
 
-Single-instruction flows can still be returned unsigned:
+Send SOL out or between vault wallets:
 
 ```ts
-const deposit = await vault.wallets.depositSol(agentAsset, 0, payer, 1_000_000n, {
-  send: false,
-  sign: false,
+const withdraw = await vault.wallets.send(agentAsset, {
+  holder,
+  from: 0,
+  to: recipient,
+  amount: 500_000n,
 });
 
-await wallet.sendTransaction(deposit.transaction, connection);
+const internal = await vault.wallets.send(agentAsset, {
+  holder,
+  from: 0,
+  to: 1,
+  amount: 250_000n,
+});
 ```
 
-Use SPL / Token-2022 wallets:
+Send SPL / Token-2022 tokens:
 
 ```ts
-const createAta = await vault.wallets.createAta(agentAsset, holder, 0, mint);
-const transferSpl = await vault.wallets.transferSpl(agentAsset, holder, 0, {
+const tokenTransfer = await vault.wallets.send(agentAsset, {
+  holder,
+  from: 0,
+  to: destinationTokenAccount,
   mint,
-  source,
-  destination,
   amount: 100n,
   decimals: 6,
 });
 ```
 
-Wrap and unwrap SOL:
+Manage token accounts and WSOL:
 
 ```ts
-const wrap = await vault.wallets.wrapSol(agentAsset, holder, 0, 1_000_000n);
-const unwrap = await vault.wallets.unwrapSol(agentAsset, holder, 0);
+const createAta = await vault.wallets.token(agentAsset, {
+  action: "createAta",
+  holder,
+  wallet: 0,
+  mint,
+});
+
+const wrap = await vault.wallets.token(agentAsset, {
+  action: "wrapSol",
+  holder,
+  wallet: 0,
+  amount: 1_000_000n,
+});
 ```
 
-Build a checked CPI for DeFi composition:
+Execute a checked CPI for DeFi composition:
 
 ```ts
-const result = await vault.wallets.executeCpiChecked(agentAsset, holder, 0, {
+const result = await vault.wallets.execute(agentAsset, {
+  holder,
+  wallet: 0,
   walletMetaIndex: 0,
   targetProgram,
   targetAccounts,
@@ -155,11 +178,18 @@ const result = await vault.wallets.executeCpiChecked(agentAsset, holder, 0, {
 });
 ```
 
-Use the short methods for normal app code. They return `{ transaction,
-signature, confirmation, signed, sent }`. When you only need raw instructions,
-use `setupInstructions()` or the `*Instruction()` methods. The lower-level
-`build*` methods remain available when you need explicit instruction naming or
-fixed wallet indexes.
+High-level actions return `{ transaction, signature, confirmation, signed, sent }`.
+For external signing, pass `{ send: false, sign: false }`. For advanced raw
+instruction construction, use `vault.wallets.instructions`.
+
+Helpful read-only helpers are also available:
+
+```ts
+const wallet = await vault.wallets.get(agentAsset, 0);
+const wallets = await vault.wallets.list(agentAsset);
+const address = vault.wallets.address(agentAsset, 0);
+const ata = vault.wallets.ataAddress(agentAsset, 0, mint);
+```
 
 ## RPC Model
 

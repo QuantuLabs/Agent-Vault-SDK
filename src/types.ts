@@ -116,11 +116,6 @@ export interface ListWalletsOptions {
   chunkSize?: number;
 }
 
-export interface CreateWalletInstructionOptions {
-  label?: string | Uint8Array;
-  index?: number;
-}
-
 export interface SetupWalletInstructionsOptions {
   labels?: Array<string | Uint8Array>;
   includeVaultInit?: "auto" | "always" | "never";
@@ -162,27 +157,46 @@ export interface ExecutedVaultTransaction extends PreparedVaultTransaction {
 
 export interface SetupWalletPlan extends SetupWalletInstructionsPlan, ExecutedVaultTransaction {}
 
-export interface CreateWalletOptions extends Omit<CreateWalletInstructionOptions, "index">, TransactionPlanOptions {}
-
-export interface CreateWalletPlan extends ExecutedVaultTransaction {
-  agentAsset: PublicKey;
-  index: number;
-  walletAddress: PublicKey;
-  instruction: TransactionInstruction;
-}
-
 export type WalletActionOptions = TransactionPlanOptions;
 
 export interface WalletActionPlan extends ExecutedVaultTransaction {
   instruction: TransactionInstruction;
 }
 
-export interface CreateAtaOptions extends WalletActionOptions {
-  tokenProgram?: PublicKeyish;
+export interface FundWalletOptions extends WalletActionOptions {
+  wallet: number;
+  payer: PublicKeyish;
+  amount: U64Input;
 }
 
-export interface ReopenForRecoveryOptions extends WalletActionOptions {
-  label?: string | Uint8Array;
+export interface SendWalletOptions extends WalletActionOptions {
+  holder: PublicKeyish;
+  from: number;
+  to: number | PublicKeyish;
+  amount: U64Input;
+  mint?: PublicKeyish;
+  decimals?: number;
+  tokenProgram?: PublicKeyish;
+  expectedFee?: U64Input;
+  source?: PublicKeyish;
+  destination?: PublicKeyish;
+}
+
+export type TokenWalletAction = "createAta" | "closeAta" | "wrapSol" | "unwrapSol";
+
+export interface TokenWalletOptions extends WalletActionOptions {
+  action: TokenWalletAction;
+  holder: PublicKeyish;
+  wallet: number;
+  mint?: PublicKeyish;
+  tokenProgram?: PublicKeyish;
+  amount?: U64Input;
+  rentReceiver?: PublicKeyish;
+}
+
+export interface ExecuteWalletOptions extends ExecuteCpiCheckedParams, WalletActionOptions {
+  holder: PublicKeyish;
+  wallet: number;
 }
 
 export interface TransferSplParams {

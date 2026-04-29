@@ -29,20 +29,32 @@ Target API:
 
 ```ts
 AgentVaultClient.devnet({ connection, identity })
-client.transaction({ feePayer, recentBlockhash, instructions })
-client.prepare({ feePayer, recentBlockhash, instructions })
-client.execute({ feePayer, recentBlockhash, instructions })
-client.tx({ feePayer, recentBlockhash, instructions })
 
 client.identities.create({ uri, atomEnabled, collectionPointer })
 client.identities.getAgentAccountPda(agentAsset)
 client.identities.requireIdentitySdk()
 ```
 
-`client.wallets` is the Agent Vault surface. It builds instructions, derives
-PDAs, lists wallets without an indexer, and verifies deployment metadata.
+`client.wallets` is the Agent Vault surface. The recommended high-level surface
+has six actions:
 
 Target API:
+
+```ts
+client.wallets.setup(agentAsset, holder, { labels, includeVaultInit, feePayer, signer, send })
+client.wallets.list(agentAsset, { startIndex, limit, includeClosed })
+client.wallets.fund(agentAsset, { wallet, payer, amount, feePayer, signer, send })
+client.wallets.send(agentAsset, { holder, from, to, amount, mint, decimals, tokenProgram })
+client.wallets.token(agentAsset, { action, holder, wallet, mint, amount, tokenProgram })
+client.wallets.execute(agentAsset, { holder, wallet, targetProgram, targetAccounts, postCheckData })
+```
+
+These actions are the default DX surface. They sign, send, and confirm by
+default when a signer is configured on the client or passed per call. Passing
+`send: false` returns a transaction without sending it; passing `send: false`
+and `sign: false` returns a transaction for external signing.
+
+Read-only helpers remain available:
 
 ```ts
 client.wallets.getVault(agentAsset)
@@ -50,49 +62,10 @@ client.wallets.get(agentAsset, index)
 client.wallets.address(agentAsset, index)
 client.wallets.ataAddress(agentAsset, index, mint, tokenProgram)
 client.wallets.overview(agentAsset, { limit })
-client.wallets.list(agentAsset, { startIndex, limit, includeClosed })
-client.wallets.listAll(agentAsset)
-client.wallets.setup(agentAsset, holder, { labels, includeVaultInit, feePayer, signer, send })
-client.wallets.setupInstructions(agentAsset, holder, { labels, includeVaultInit })
-client.wallets.createWallet(agentAsset, holder, { label, feePayer, signer, send })
-client.wallets.createWalletInstruction(agentAsset, holder, { label })
-client.wallets.initVault(agentAsset, holder)
-client.wallets.updateLabel(agentAsset, holder, index, label)
-client.wallets.depositSol(agentAsset, index, funder, amount)
-client.wallets.withdrawSol(agentAsset, holder, index, amount, destination)
-client.wallets.transferSol(agentAsset, holder, fromIndex, toIndex, amount)
-client.wallets.createAta(agentAsset, holder, index, mint, tokenProgram)
-client.wallets.transferSpl(agentAsset, holder, index, params)
-client.wallets.wrapSol(agentAsset, holder, index, amount)
-client.wallets.unwrapSol(agentAsset, holder, index)
-client.wallets.closeAta(agentAsset, holder, index, mint, tokenProgram, rentReceiver)
-client.wallets.executeCpiChecked(agentAsset, holder, index, params)
-client.wallets.reopenForRecovery(agentAsset, holder, index, { label })
-client.wallets.close(agentAsset, holder, index, rentReceiver)
-client.wallets.buildInitVault(agentAsset, holder)
-client.wallets.buildCreate(agentAsset, holder, { index, label })
-client.wallets.buildUpdateLabel(agentAsset, holder, index, label)
-client.wallets.buildDepositSol(agentAsset, index, funder, amount)
-client.wallets.buildWithdrawSol(agentAsset, holder, index, amount, destination)
-client.wallets.buildTransferSol(agentAsset, holder, fromIndex, toIndex, amount)
-client.wallets.buildCreateAta(agentAsset, holder, index, mint, tokenProgram)
-client.wallets.buildTransferSpl(agentAsset, holder, index, params)
-client.wallets.buildWrapSol(agentAsset, holder, index, amount)
-client.wallets.buildUnwrapSol(agentAsset, holder, index)
-client.wallets.buildCloseAta(agentAsset, holder, index, mint, tokenProgram, rentReceiver)
-client.wallets.buildExecuteCpiChecked(agentAsset, holder, index, params)
-client.wallets.buildReopenForRecovery(agentAsset, holder, index, { label })
-client.wallets.buildClose(agentAsset, holder, index, rentReceiver)
 client.wallets.verifyDeployment()
 ```
 
-The short methods are the default DX surface. They sign, send, and confirm by
-default when a signer is configured on the client or passed per call. Passing
-`send: false` returns a transaction without sending it; passing `send: false`
-and `sign: false` returns a transaction for external signing.
-
-The `*Instruction()` and `build*` methods are retained as explicit low-level
-aliases for deterministic instruction construction.
+Raw instruction construction is available through `client.wallets.instructions`.
 
 ## RPC Rules
 

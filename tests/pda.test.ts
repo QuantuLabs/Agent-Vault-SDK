@@ -59,26 +59,20 @@ const connection = {
   }),
 } as unknown as Connection;
 const client = AgentVaultClient.devnet({ connection, signer: holderSigner });
-const setupInstructions = await client.wallets.setupInstructions(agentAsset, holder, {
+const setupPreview = await client.wallets.setup(agentAsset, holder, {
   labels: ["trading", "treasury"],
+  send: false,
+  sign: false,
 });
 
 assert.equal(client.wallets.address(agentAsset, 0).toBase58(), wallet0.toBase58());
-assert.equal(setupInstructions.vaultExists, false);
-assert.equal(setupInstructions.nextIndex, 0);
-assert.equal(setupInstructions.walletAddresses.length, 2);
-assert.equal(setupInstructions.instructions.length, 3);
-assert.equal(setupInstructions.instructions[0]?.data[0], AGENT_VAULT_TAGS.initVaultConfig);
-assert.equal(setupInstructions.instructions[1]?.data[0], AGENT_VAULT_TAGS.createWallet);
-assert.equal(setupInstructions.instructions[2]?.data[0], AGENT_VAULT_TAGS.createWallet);
-
-const transaction = client.transaction({
-  feePayer: holder,
-  recentBlockhash: "11111111111111111111111111111111",
-  instructions: setupInstructions.instructions,
-});
-assert.equal(transaction.feePayer?.toBase58(), holder.toBase58());
-assert.equal(transaction.instructions.length, setupInstructions.instructions.length);
+assert.equal(setupPreview.vaultExists, false);
+assert.equal(setupPreview.nextIndex, 0);
+assert.equal(setupPreview.walletAddresses.length, 2);
+assert.equal(setupPreview.instructions.length, 3);
+assert.equal(setupPreview.instructions[0]?.data[0], AGENT_VAULT_TAGS.initVaultConfig);
+assert.equal(setupPreview.instructions[1]?.data[0], AGENT_VAULT_TAGS.createWallet);
+assert.equal(setupPreview.instructions[2]?.data[0], AGENT_VAULT_TAGS.createWallet);
 
 const setup = await client.wallets.setup(agentAsset, holder, {
   labels: ["treasury"],
@@ -100,18 +94,23 @@ assert.equal(unsignedSetup.sent, false);
 assert.equal(unsignedSetup.signed, false);
 assert.equal(unsignedSetup.signature, null);
 
-const quickTx = await client.tx({
-  feePayer: holder,
-  instructions: setupInstructions.instructions,
-});
-assert.equal(quickTx.instructions.length, setupInstructions.instructions.length);
+assert.equal(setupPreview.transaction.feePayer?.toBase58(), holder.toBase58());
+assert.equal(setupPreview.transaction.instructions.length, setupPreview.instructions.length);
 
-const deposit = await client.wallets.depositSol(agentAsset, 0, holder, 1_000n);
+const deposit = await client.wallets.fund(agentAsset, {
+  wallet: 0,
+  payer: holder,
+  amount: 1_000n,
+});
 assert.equal(deposit.instruction.data[0], AGENT_VAULT_TAGS.depositSol);
 assert.equal(deposit.sent, true);
 assert.equal(deposit.signed, true);
 
-const withdraw = await client.wallets.withdrawSol(agentAsset, holder, 0, 500n, holder, {
+const withdraw = await client.wallets.send(agentAsset, {
+  holder,
+  from: 0,
+  to: holder,
+  amount: 500n,
   send: false,
   sign: false,
 });

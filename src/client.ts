@@ -1,9 +1,8 @@
 import { AgentVaultIdentitiesClient } from "./identities.js";
 import { AgentVaultWalletsClient } from "./wallets.js";
-import { buildTransaction, executeTransaction, prepareTransaction } from "./transactions.js";
 import { toPublicKey } from "./codec.js";
 import { AGENT_VAULT_PROGRAM_ID, DEVNET_RELEASE_MANIFEST } from "./constants.js";
-import type { AgentVaultClientConfig, BuildTransactionOptions, ExecutedVaultTransaction, PreparedVaultTransaction } from "./types.js";
+import type { AgentVaultClientConfig } from "./types.js";
 
 export class AgentVaultClient {
   readonly identities: AgentVaultIdentitiesClient;
@@ -36,22 +35,6 @@ export class AgentVaultClient {
     });
   }
 
-  transaction(options: BuildTransactionOptions) {
-    return buildTransaction(options);
-  }
-
-  async prepare(options: BuildTransactionOptions): Promise<PreparedVaultTransaction> {
-    return prepareTransaction(this.config.connection, options, this.config.signer);
-  }
-
-  async execute(options: BuildTransactionOptions): Promise<ExecutedVaultTransaction> {
-    return executeTransaction(this.config.connection, options, this.config.signer);
-  }
-
-  async tx(options: BuildTransactionOptions) {
-    const prepared = await this.prepare(options);
-    return prepared.transaction;
-  }
 }
 
 export function createAgentVaultClient(config: AgentVaultClientConfig): AgentVaultClient {
