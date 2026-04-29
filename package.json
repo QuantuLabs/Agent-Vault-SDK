@@ -20,8 +20,11 @@
     "package.json"
   ],
   "scripts": {
+    "clean": "rm -rf dist",
     "build": "tsc -p tsconfig.json",
     "test": "tsx tests/pda.test.ts",
+    "pack:dry-run": "npm pack --dry-run",
+    "prepack": "npm run build",
     "check": "npm run build && npm run test"
   },
   "keywords": [

@@ -28,6 +28,9 @@ creation to `8004-solana` and exposes PDA helpers for the 8004 AgentAccount.
 Target API:
 
 ```ts
+AgentVaultClient.devnet({ connection, identity })
+client.transaction({ feePayer, recentBlockhash, instructions })
+
 client.identities.create({ uri, atomEnabled, collectionPointer })
 client.identities.getAgentAccountPda(agentAsset)
 client.identities.requireIdentitySdk()
@@ -41,9 +44,26 @@ Target API:
 ```ts
 client.wallets.getVault(agentAsset)
 client.wallets.get(agentAsset, index)
+client.wallets.address(agentAsset, index)
+client.wallets.ataAddress(agentAsset, index, mint, tokenProgram)
+client.wallets.overview(agentAsset, { limit })
 client.wallets.list(agentAsset, { startIndex, limit, includeClosed })
 client.wallets.listAll(agentAsset)
-client.wallets.create(agentAsset, holder, { label })
+client.wallets.setup(agentAsset, holder, { labels, includeVaultInit })
+client.wallets.createWallet(agentAsset, holder, { label })
+client.wallets.initVault(agentAsset, holder)
+client.wallets.updateLabel(agentAsset, holder, index, label)
+client.wallets.depositSol(agentAsset, index, funder, amount)
+client.wallets.withdrawSol(agentAsset, holder, index, amount, destination)
+client.wallets.transferSol(agentAsset, holder, fromIndex, toIndex, amount)
+client.wallets.createAta(agentAsset, holder, index, mint, tokenProgram)
+client.wallets.transferSpl(agentAsset, holder, index, params)
+client.wallets.wrapSol(agentAsset, holder, index, amount)
+client.wallets.unwrapSol(agentAsset, holder, index)
+client.wallets.closeAta(agentAsset, holder, index, mint, tokenProgram, rentReceiver)
+client.wallets.executeCpiChecked(agentAsset, holder, index, params)
+client.wallets.reopenForRecovery(agentAsset, holder, index, { label })
+client.wallets.close(agentAsset, holder, index, rentReceiver)
 client.wallets.buildInitVault(agentAsset, holder)
 client.wallets.buildCreate(agentAsset, holder, { index, label })
 client.wallets.buildUpdateLabel(agentAsset, holder, index, label)
@@ -60,6 +80,9 @@ client.wallets.buildReopenForRecovery(agentAsset, holder, index, { label })
 client.wallets.buildClose(agentAsset, holder, index, rentReceiver)
 client.wallets.verifyDeployment()
 ```
+
+The short methods are the default DX surface. The `build*` methods are retained
+as explicit low-level aliases for deterministic instruction construction.
 
 ## RPC Rules
 
