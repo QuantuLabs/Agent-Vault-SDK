@@ -20,7 +20,11 @@ import { AgentVaultClient } from "agent-vault";
 
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 const identity = new SolanaSDK({ cluster: "devnet" });
-const vault = AgentVaultClient.devnet({ connection, identity });
+const vault = AgentVaultClient.devnet({
+  connection,
+  identity,
+  signer: wallet,
+});
 
 const holder = new PublicKey("...");
 const { agentAsset } = await vault.identities.create({
@@ -31,12 +35,25 @@ const setup = await vault.wallets.setup(agentAsset, holder, {
   labels: ["treasury", "trading"],
 });
 
-const tx = setup.transaction;
+console.log(setup.signature);
+console.log(setup.confirmation);
 ```
 
-The SDK merges common instructions and fetches a fresh blockhash for transaction
-plans. Your app or wallet adapter still owns signing, simulation, sending, and
-confirmation.
+Top-level wallet methods merge common instructions, fetch a fresh blockhash,
+sign with `client.signer`, send the transaction, confirm it, and return the
+signature plus confirmation details.
+
+To return a transaction for external signing instead:
+
+```ts
+const setup = await vault.wallets.setup(agentAsset, holder, {
+  labels: ["treasury", "trading"],
+  send: false,
+  sign: false,
+});
+
+const tx = setup.transaction;
+```
 
 ## API Shape
 
@@ -73,7 +90,7 @@ const plan = await vault.wallets.setup(agentAsset, holder, {
   labels: ["treasury", "trading", "ops"],
 });
 
-await wallet.sendTransaction(plan.transaction, connection);
+console.log(plan.signature);
 ```
 
 Create the next wallet after a vault already exists:
@@ -83,31 +100,33 @@ const plan = await vault.wallets.createWallet(agentAsset, holder, {
   label: "defi",
 });
 
-await wallet.sendTransaction(plan.transaction, connection);
+console.log(plan.walletAddress.toBase58(), plan.signature);
 ```
 
 Move SOL:
 
 ```ts
-const deposit = vault.wallets.depositSol(agentAsset, 0, payer, 1_000_000n);
-const withdraw = vault.wallets.withdrawSol(agentAsset, holder, 0, 500_000n, recipient);
-const transfer = vault.wallets.transferSol(agentAsset, holder, 0, 1, 250_000n);
+const deposit = await vault.wallets.depositSol(agentAsset, 0, payer, 1_000_000n);
+const withdraw = await vault.wallets.withdrawSol(agentAsset, holder, 0, 500_000n, recipient);
+const transfer = await vault.wallets.transferSol(agentAsset, holder, 0, 1, 250_000n);
 ```
 
-Single-instruction flows can be wrapped into a transaction with `vault.tx()`:
+Single-instruction flows can still be returned unsigned:
 
 ```ts
-const tx = await vault.tx({
-  feePayer: holder,
-  instructions: [deposit],
+const deposit = await vault.wallets.depositSol(agentAsset, 0, payer, 1_000_000n, {
+  send: false,
+  sign: false,
 });
+
+await wallet.sendTransaction(deposit.transaction, connection);
 ```
 
 Use SPL / Token-2022 wallets:
 
 ```ts
-const createAta = vault.wallets.createAta(agentAsset, holder, 0, mint);
-const transferSpl = vault.wallets.transferSpl(agentAsset, holder, 0, {
+const createAta = await vault.wallets.createAta(agentAsset, holder, 0, mint);
+const transferSpl = await vault.wallets.transferSpl(agentAsset, holder, 0, {
   mint,
   source,
   destination,
@@ -119,14 +138,14 @@ const transferSpl = vault.wallets.transferSpl(agentAsset, holder, 0, {
 Wrap and unwrap SOL:
 
 ```ts
-const wrap = vault.wallets.wrapSol(agentAsset, holder, 0, 1_000_000n);
-const unwrap = vault.wallets.unwrapSol(agentAsset, holder, 0);
+const wrap = await vault.wallets.wrapSol(agentAsset, holder, 0, 1_000_000n);
+const unwrap = await vault.wallets.unwrapSol(agentAsset, holder, 0);
 ```
 
 Build a checked CPI for DeFi composition:
 
 ```ts
-const ix = vault.wallets.executeCpiChecked(agentAsset, holder, 0, {
+const result = await vault.wallets.executeCpiChecked(agentAsset, holder, 0, {
   walletMetaIndex: 0,
   targetProgram,
   targetAccounts,
@@ -136,8 +155,9 @@ const ix = vault.wallets.executeCpiChecked(agentAsset, holder, 0, {
 });
 ```
 
-Use the short methods for normal app code. When you only need raw instructions,
-use `setupInstructions()` or `createWalletInstruction()`. The lower-level
+Use the short methods for normal app code. They return `{ transaction,
+signature, confirmation, signed, sent }`. When you only need raw instructions,
+use `setupInstructions()` or the `*Instruction()` methods. The lower-level
 `build*` methods remain available when you need explicit instruction naming or
 fixed wallet indexes.
 

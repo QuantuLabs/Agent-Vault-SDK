@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { PublicKey, type Connection } from "@solana/web3.js";
+import { Keypair, PublicKey, type Connection } from "@solana/web3.js";
 import {
   AGENT_VAULT_PROGRAM_ID,
   AGENT_VAULT_TAGS,
@@ -10,7 +10,8 @@ import {
 } from "../src/index.js";
 
 const agentAsset = new PublicKey("6CTyGPcn8dMwKEqgtvx2XCpkGUd7uqCVK6937RSM5bhA");
-const holder = new PublicKey("2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t");
+const holderSigner = Keypair.generate();
+const holder = holderSigner.publicKey;
 const registryProgram = new PublicKey("8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C");
 
 const pdas = new AgentVaultPdas(AGENT_VAULT_PROGRAM_ID, registryProgram);
@@ -48,8 +49,16 @@ const connection = {
     blockhash: "11111111111111111111111111111111",
     lastValidBlockHeight: 123,
   }),
+  sendRawTransaction: async (raw: Buffer | Uint8Array) => {
+    assert.ok(raw.length > 0);
+    return "4NqC5aAD5yCRQXcYfZ95Hoq5yyT93L1oMRwA7gkBsYk9P";
+  },
+  confirmTransaction: async () => ({
+    context: { slot: 1 },
+    value: { err: null },
+  }),
 } as unknown as Connection;
-const client = AgentVaultClient.devnet({ connection });
+const client = AgentVaultClient.devnet({ connection, signer: holderSigner });
 const setupInstructions = await client.wallets.setupInstructions(agentAsset, holder, {
   labels: ["trading", "treasury"],
 });
@@ -77,9 +86,35 @@ const setup = await client.wallets.setup(agentAsset, holder, {
 assert.equal(setup.blockhash, "11111111111111111111111111111111");
 assert.equal(setup.lastValidBlockHeight, 123);
 assert.equal(setup.transaction.instructions.length, 2);
+assert.equal(setup.sent, true);
+assert.equal(setup.signed, true);
+assert.equal(setup.signature, "4NqC5aAD5yCRQXcYfZ95Hoq5yyT93L1oMRwA7gkBsYk9P");
+assert.equal(setup.confirmation?.value.err, null);
+
+const unsignedSetup = await client.wallets.setup(agentAsset, holder, {
+  labels: ["unsigned"],
+  send: false,
+  sign: false,
+});
+assert.equal(unsignedSetup.sent, false);
+assert.equal(unsignedSetup.signed, false);
+assert.equal(unsignedSetup.signature, null);
 
 const quickTx = await client.tx({
   feePayer: holder,
   instructions: setupInstructions.instructions,
 });
 assert.equal(quickTx.instructions.length, setupInstructions.instructions.length);
+
+const deposit = await client.wallets.depositSol(agentAsset, 0, holder, 1_000n);
+assert.equal(deposit.instruction.data[0], AGENT_VAULT_TAGS.depositSol);
+assert.equal(deposit.sent, true);
+assert.equal(deposit.signed, true);
+
+const withdraw = await client.wallets.withdrawSol(agentAsset, holder, 0, 500n, holder, {
+  send: false,
+  sign: false,
+});
+assert.equal(withdraw.instruction.data[0], AGENT_VAULT_TAGS.withdrawSol);
+assert.equal(withdraw.sent, false);
+assert.equal(withdraw.signed, false);

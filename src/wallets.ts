@@ -2,11 +2,13 @@ import { PublicKey, SystemProgram, type AccountInfo, type Connection, type Trans
 import { compareGlobalConfigToManifest, parseGlobalConfig, parseVaultConfig, parseWallet } from "./accounts.js";
 import { DEVNET_RELEASE_MANIFEST, TOKEN_PROGRAM_ID, WALLET_LENGTH } from "./constants.js";
 import { AgentVaultInstructions } from "./instructions.js";
-import { prepareTransaction } from "./transactions.js";
+import { executeTransaction } from "./transactions.js";
 import { toPublicKey } from "./codec.js";
 import type {
   AgentVaultReleaseManifest,
+  AgentVaultTransactionSigner,
   BuildTransactionOptions,
+  CreateAtaOptions,
   CreateWalletInstructionOptions,
   CreateWalletOptions,
   CreateWalletPlan,
@@ -21,8 +23,11 @@ import type {
   TransferSplParams,
   U64Input,
   VaultConfig,
+  WalletActionOptions,
+  WalletActionPlan,
   WalletOverview,
   WalletRecord,
+  ReopenForRecoveryOptions,
 } from "./types.js";
 
 const DEFAULT_LIST_LIMIT = 100;
@@ -37,10 +42,14 @@ export class AgentVaultWalletsClient {
       programId?: PublicKeyish;
       registryProgram?: PublicKeyish;
       releaseManifest?: AgentVaultReleaseManifest;
+      signer?: AgentVaultTransactionSigner;
     } = {},
   ) {
+    this.signer = params.signer;
     this.instructions = new AgentVaultInstructions(params);
   }
+
+  private readonly signer: AgentVaultTransactionSigner | undefined;
 
   get pdas() {
     return this.instructions.pdas;
@@ -186,10 +195,8 @@ export class AgentVaultWalletsClient {
       feePayer: options.feePayer ?? holder,
       instructions: setup.instructions,
     };
-    if (options.recentBlockhash !== undefined) {
-      transactionOptions.recentBlockhash = options.recentBlockhash;
-    }
-    const prepared = await prepareTransaction(this.connection, transactionOptions);
+    applyTransactionOptions(transactionOptions, options);
+    const prepared = await executeTransaction(this.connection, transactionOptions, this.signer);
 
     return {
       ...setup,
@@ -220,10 +227,8 @@ export class AgentVaultWalletsClient {
       feePayer: options.feePayer ?? holder,
       instructions: [instruction],
     };
-    if (options.recentBlockhash !== undefined) {
-      transactionOptions.recentBlockhash = options.recentBlockhash;
-    }
-    const prepared = await prepareTransaction(this.connection, transactionOptions);
+    applyTransactionOptions(transactionOptions, options);
+    const prepared = await executeTransaction(this.connection, transactionOptions, this.signer);
 
     return {
       agentAsset: asset,
@@ -234,7 +239,11 @@ export class AgentVaultWalletsClient {
     };
   }
 
-  initVault(agentAsset: PublicKeyish, holder: PublicKeyish): TransactionInstruction {
+  initVault(agentAsset: PublicKeyish, holder: PublicKeyish, options: WalletActionOptions = {}): Promise<WalletActionPlan> {
+    return this.prepareAction(this.initVaultInstruction(agentAsset, holder), holder, options);
+  }
+
+  initVaultInstruction(agentAsset: PublicKeyish, holder: PublicKeyish): TransactionInstruction {
     return this.buildInitVault(agentAsset, holder);
   }
 
@@ -249,7 +258,11 @@ export class AgentVaultWalletsClient {
     return this.instructions.createWallet(agentAsset, holder, options.index, options.label);
   }
 
-  updateLabel(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, label: string | Uint8Array): TransactionInstruction {
+  updateLabel(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, label: string | Uint8Array, options: WalletActionOptions = {}): Promise<WalletActionPlan> {
+    return this.prepareAction(this.updateLabelInstruction(agentAsset, holder, index, label), holder, options);
+  }
+
+  updateLabelInstruction(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, label: string | Uint8Array): TransactionInstruction {
     return this.buildUpdateLabel(agentAsset, holder, index, label);
   }
 
@@ -257,7 +270,11 @@ export class AgentVaultWalletsClient {
     return this.instructions.updateWalletLabel(agentAsset, holder, index, label);
   }
 
-  depositSol(agentAsset: PublicKeyish, index: number, funder: PublicKeyish, amount: U64Input): TransactionInstruction {
+  depositSol(agentAsset: PublicKeyish, index: number, funder: PublicKeyish, amount: U64Input, options: WalletActionOptions = {}): Promise<WalletActionPlan> {
+    return this.prepareAction(this.depositSolInstruction(agentAsset, index, funder, amount), funder, options);
+  }
+
+  depositSolInstruction(agentAsset: PublicKeyish, index: number, funder: PublicKeyish, amount: U64Input): TransactionInstruction {
     return this.buildDepositSol(agentAsset, index, funder, amount);
   }
 
@@ -265,7 +282,11 @@ export class AgentVaultWalletsClient {
     return this.instructions.depositSol(agentAsset, index, funder, amount);
   }
 
-  withdrawSol(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, amount: U64Input, destination: PublicKeyish): TransactionInstruction {
+  withdrawSol(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, amount: U64Input, destination: PublicKeyish, options: WalletActionOptions = {}): Promise<WalletActionPlan> {
+    return this.prepareAction(this.withdrawSolInstruction(agentAsset, holder, index, amount, destination), holder, options);
+  }
+
+  withdrawSolInstruction(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, amount: U64Input, destination: PublicKeyish): TransactionInstruction {
     return this.buildWithdrawSol(agentAsset, holder, index, amount, destination);
   }
 
@@ -273,7 +294,11 @@ export class AgentVaultWalletsClient {
     return this.instructions.withdrawSol(agentAsset, holder, index, amount, destination);
   }
 
-  transferSol(agentAsset: PublicKeyish, holder: PublicKeyish, fromIndex: number, toIndex: number, amount: U64Input): TransactionInstruction {
+  transferSol(agentAsset: PublicKeyish, holder: PublicKeyish, fromIndex: number, toIndex: number, amount: U64Input, options: WalletActionOptions = {}): Promise<WalletActionPlan> {
+    return this.prepareAction(this.transferSolInstruction(agentAsset, holder, fromIndex, toIndex, amount), holder, options);
+  }
+
+  transferSolInstruction(agentAsset: PublicKeyish, holder: PublicKeyish, fromIndex: number, toIndex: number, amount: U64Input): TransactionInstruction {
     return this.buildTransferSol(agentAsset, holder, fromIndex, toIndex, amount);
   }
 
@@ -281,7 +306,15 @@ export class AgentVaultWalletsClient {
     return this.instructions.transferSol(agentAsset, holder, fromIndex, toIndex, amount);
   }
 
-  createAta(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, mint: PublicKeyish, tokenProgram?: PublicKeyish): TransactionInstruction {
+  createAta(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, mint: PublicKeyish, options: CreateAtaOptions = {}): Promise<WalletActionPlan> {
+    return this.prepareAction(
+      this.createAtaInstruction(agentAsset, holder, index, mint, options.tokenProgram),
+      holder,
+      options,
+    );
+  }
+
+  createAtaInstruction(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, mint: PublicKeyish, tokenProgram?: PublicKeyish): TransactionInstruction {
     return this.buildCreateAta(agentAsset, holder, index, mint, tokenProgram);
   }
 
@@ -291,7 +324,11 @@ export class AgentVaultWalletsClient {
       : this.instructions.createAta(agentAsset, holder, index, mint);
   }
 
-  transferSpl(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, params: TransferSplParams): TransactionInstruction {
+  transferSpl(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, params: TransferSplParams, options: WalletActionOptions = {}): Promise<WalletActionPlan> {
+    return this.prepareAction(this.transferSplInstruction(agentAsset, holder, index, params), holder, options);
+  }
+
+  transferSplInstruction(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, params: TransferSplParams): TransactionInstruction {
     return this.buildTransferSpl(agentAsset, holder, index, params);
   }
 
@@ -299,7 +336,11 @@ export class AgentVaultWalletsClient {
     return this.instructions.transferSpl(agentAsset, holder, index, params);
   }
 
-  wrapSol(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, amount: U64Input): TransactionInstruction {
+  wrapSol(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, amount: U64Input, options: WalletActionOptions = {}): Promise<WalletActionPlan> {
+    return this.prepareAction(this.wrapSolInstruction(agentAsset, holder, index, amount), holder, options);
+  }
+
+  wrapSolInstruction(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, amount: U64Input): TransactionInstruction {
     return this.buildWrapSol(agentAsset, holder, index, amount);
   }
 
@@ -307,7 +348,11 @@ export class AgentVaultWalletsClient {
     return this.instructions.wrapSol(agentAsset, holder, index, amount);
   }
 
-  unwrapSol(agentAsset: PublicKeyish, holder: PublicKeyish, index: number): TransactionInstruction {
+  unwrapSol(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, options: WalletActionOptions = {}): Promise<WalletActionPlan> {
+    return this.prepareAction(this.unwrapSolInstruction(agentAsset, holder, index), holder, options);
+  }
+
+  unwrapSolInstruction(agentAsset: PublicKeyish, holder: PublicKeyish, index: number): TransactionInstruction {
     return this.buildUnwrapSol(agentAsset, holder, index);
   }
 
@@ -315,7 +360,11 @@ export class AgentVaultWalletsClient {
     return this.instructions.unwrapSol(agentAsset, holder, index);
   }
 
-  closeAta(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, mint: PublicKeyish, tokenProgram: PublicKeyish, rentReceiver: PublicKeyish): TransactionInstruction {
+  closeAta(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, mint: PublicKeyish, tokenProgram: PublicKeyish, rentReceiver: PublicKeyish, options: WalletActionOptions = {}): Promise<WalletActionPlan> {
+    return this.prepareAction(this.closeAtaInstruction(agentAsset, holder, index, mint, tokenProgram, rentReceiver), holder, options);
+  }
+
+  closeAtaInstruction(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, mint: PublicKeyish, tokenProgram: PublicKeyish, rentReceiver: PublicKeyish): TransactionInstruction {
     return this.buildCloseAta(agentAsset, holder, index, mint, tokenProgram, rentReceiver);
   }
 
@@ -323,7 +372,11 @@ export class AgentVaultWalletsClient {
     return this.instructions.closeAta(agentAsset, holder, index, mint, tokenProgram, rentReceiver);
   }
 
-  executeCpiChecked(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, params: ExecuteCpiCheckedParams): TransactionInstruction {
+  executeCpiChecked(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, params: ExecuteCpiCheckedParams, options: WalletActionOptions = {}): Promise<WalletActionPlan> {
+    return this.prepareAction(this.executeCpiCheckedInstruction(agentAsset, holder, index, params), holder, options);
+  }
+
+  executeCpiCheckedInstruction(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, params: ExecuteCpiCheckedParams): TransactionInstruction {
     return this.buildExecuteCpiChecked(agentAsset, holder, index, params);
   }
 
@@ -331,7 +384,15 @@ export class AgentVaultWalletsClient {
     return this.instructions.executeCpiChecked(agentAsset, holder, index, params);
   }
 
-  reopenForRecovery(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, options: { label?: string | Uint8Array } = {}): TransactionInstruction {
+  reopenForRecovery(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, options: ReopenForRecoveryOptions = {}): Promise<WalletActionPlan> {
+    return this.prepareAction(
+      this.reopenForRecoveryInstruction(agentAsset, holder, index, options),
+      holder,
+      options,
+    );
+  }
+
+  reopenForRecoveryInstruction(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, options: { label?: string | Uint8Array } = {}): TransactionInstruction {
     return this.buildReopenForRecovery(agentAsset, holder, index, options);
   }
 
@@ -339,7 +400,11 @@ export class AgentVaultWalletsClient {
     return this.instructions.reopenForRecovery(agentAsset, holder, index, options.label);
   }
 
-  close(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, rentReceiver: PublicKeyish): TransactionInstruction {
+  close(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, rentReceiver: PublicKeyish, options: WalletActionOptions = {}): Promise<WalletActionPlan> {
+    return this.prepareAction(this.closeInstruction(agentAsset, holder, index, rentReceiver), holder, options);
+  }
+
+  closeInstruction(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, rentReceiver: PublicKeyish): TransactionInstruction {
     return this.buildClose(agentAsset, holder, index, rentReceiver);
   }
 
@@ -372,6 +437,23 @@ export class AgentVaultWalletsClient {
       ok: issues.length === 0,
       status: issues.length === 0 ? "verified" : "mismatch",
       issues,
+    };
+  }
+
+  private async prepareAction(
+    instruction: TransactionInstruction,
+    defaultFeePayer: PublicKeyish,
+    options: WalletActionOptions,
+  ): Promise<WalletActionPlan> {
+    const transactionOptions: BuildTransactionOptions = {
+      feePayer: options.feePayer ?? defaultFeePayer,
+      instructions: [instruction],
+    };
+    applyTransactionOptions(transactionOptions, options);
+
+    return {
+      instruction,
+      ...(await executeTransaction(this.connection, transactionOptions, this.signer)),
     };
   }
 
@@ -428,5 +510,26 @@ export class AgentVaultWalletsClient {
       account: null,
       rawAccount: info,
     };
+  }
+}
+
+function applyTransactionOptions(target: BuildTransactionOptions, options: WalletActionOptions): void {
+  if (options.recentBlockhash !== undefined) {
+    target.recentBlockhash = options.recentBlockhash;
+  }
+  if (options.signer !== undefined) {
+    target.signer = options.signer;
+  }
+  if (options.sign !== undefined) {
+    target.sign = options.sign;
+  }
+  if (options.send !== undefined) {
+    target.send = options.send;
+  }
+  if (options.commitment !== undefined) {
+    target.commitment = options.commitment;
+  }
+  if (options.sendOptions !== undefined) {
+    target.sendOptions = options.sendOptions;
   }
 }

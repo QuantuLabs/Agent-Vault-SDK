@@ -31,6 +31,7 @@ Target API:
 AgentVaultClient.devnet({ connection, identity })
 client.transaction({ feePayer, recentBlockhash, instructions })
 client.prepare({ feePayer, recentBlockhash, instructions })
+client.execute({ feePayer, recentBlockhash, instructions })
 client.tx({ feePayer, recentBlockhash, instructions })
 
 client.identities.create({ uri, atomEnabled, collectionPointer })
@@ -51,9 +52,9 @@ client.wallets.ataAddress(agentAsset, index, mint, tokenProgram)
 client.wallets.overview(agentAsset, { limit })
 client.wallets.list(agentAsset, { startIndex, limit, includeClosed })
 client.wallets.listAll(agentAsset)
-client.wallets.setup(agentAsset, holder, { labels, includeVaultInit, feePayer })
+client.wallets.setup(agentAsset, holder, { labels, includeVaultInit, feePayer, signer, send })
 client.wallets.setupInstructions(agentAsset, holder, { labels, includeVaultInit })
-client.wallets.createWallet(agentAsset, holder, { label, feePayer })
+client.wallets.createWallet(agentAsset, holder, { label, feePayer, signer, send })
 client.wallets.createWalletInstruction(agentAsset, holder, { label })
 client.wallets.initVault(agentAsset, holder)
 client.wallets.updateLabel(agentAsset, holder, index, label)
@@ -85,8 +86,13 @@ client.wallets.buildClose(agentAsset, holder, index, rentReceiver)
 client.wallets.verifyDeployment()
 ```
 
-The short methods are the default DX surface. The `build*` methods are retained
-as explicit low-level aliases for deterministic instruction construction.
+The short methods are the default DX surface. They sign, send, and confirm by
+default when a signer is configured on the client or passed per call. Passing
+`send: false` returns a transaction without sending it; passing `send: false`
+and `sign: false` returns a transaction for external signing.
+
+The `*Instruction()` and `build*` methods are retained as explicit low-level
+aliases for deterministic instruction construction.
 
 ## RPC Rules
 

@@ -1,9 +1,26 @@
-import type { AccountInfo, Connection, PublicKey, Transaction, TransactionInstruction } from "@solana/web3.js";
+import type {
+  AccountInfo,
+  Commitment,
+  Connection,
+  PublicKey,
+  RpcResponseAndContext,
+  SendOptions,
+  SignatureResult,
+  Signer,
+  Transaction,
+  TransactionInstruction,
+} from "@solana/web3.js";
 import type { SolanaSDK } from "8004-solana";
 
 export type PublicKeyish = PublicKey | string;
 export type U64Input = bigint | number | string;
 export type TokenProgramKind = "tokenkeg" | "token2022";
+export type AgentVaultTransactionSigner =
+  | Signer
+  | {
+      publicKey?: PublicKey;
+      signTransaction(transaction: Transaction): Promise<Transaction> | Transaction;
+    };
 
 export type AgentVaultCluster = "devnet" | "mainnet" | "localnet";
 
@@ -37,6 +54,7 @@ export interface AgentVaultClientConfig {
   registryProgram?: PublicKeyish;
   releaseManifest?: AgentVaultReleaseManifest;
   identity?: IdentitySdk;
+  signer?: AgentVaultTransactionSigner;
 }
 
 export interface CreateIdentityParams {
@@ -111,6 +129,11 @@ export interface SetupWalletInstructionsOptions {
 export interface TransactionPlanOptions {
   feePayer?: PublicKeyish;
   recentBlockhash?: string;
+  signer?: AgentVaultTransactionSigner;
+  sign?: boolean;
+  send?: boolean;
+  commitment?: Commitment;
+  sendOptions?: SendOptions;
 }
 
 export interface SetupWalletOptions extends SetupWalletInstructionsOptions, TransactionPlanOptions {}
@@ -127,17 +150,39 @@ export interface PreparedVaultTransaction {
   transaction: Transaction;
   blockhash: string;
   lastValidBlockHeight: number | null;
+  signed: boolean;
+  signer: PublicKey | null;
 }
 
-export interface SetupWalletPlan extends SetupWalletInstructionsPlan, PreparedVaultTransaction {}
+export interface ExecutedVaultTransaction extends PreparedVaultTransaction {
+  sent: boolean;
+  signature: string | null;
+  confirmation: RpcResponseAndContext<SignatureResult> | null;
+}
+
+export interface SetupWalletPlan extends SetupWalletInstructionsPlan, ExecutedVaultTransaction {}
 
 export interface CreateWalletOptions extends Omit<CreateWalletInstructionOptions, "index">, TransactionPlanOptions {}
 
-export interface CreateWalletPlan extends PreparedVaultTransaction {
+export interface CreateWalletPlan extends ExecutedVaultTransaction {
   agentAsset: PublicKey;
   index: number;
   walletAddress: PublicKey;
   instruction: TransactionInstruction;
+}
+
+export type WalletActionOptions = TransactionPlanOptions;
+
+export interface WalletActionPlan extends ExecutedVaultTransaction {
+  instruction: TransactionInstruction;
+}
+
+export interface CreateAtaOptions extends WalletActionOptions {
+  tokenProgram?: PublicKeyish;
+}
+
+export interface ReopenForRecoveryOptions extends WalletActionOptions {
+  label?: string | Uint8Array;
 }
 
 export interface TransferSplParams {
@@ -173,6 +218,11 @@ export interface BuildTransactionOptions {
   feePayer: PublicKeyish;
   instructions: TransactionInstruction[];
   recentBlockhash?: string;
+  signer?: AgentVaultTransactionSigner;
+  sign?: boolean;
+  send?: boolean;
+  commitment?: Commitment;
+  sendOptions?: SendOptions;
 }
 
 export interface WalletInstructionSet {
