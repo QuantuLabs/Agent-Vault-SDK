@@ -19,7 +19,7 @@ import { SolanaSDK } from "8004-solana";
 import { AgentVaultClient } from "agent-vault";
 
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");
-const identity = new SolanaSDK({ cluster: "devnet" });
+const identity = new SolanaSDK({ cluster: "devnet", signer: wallet });
 const vault = AgentVaultClient.devnet({
   connection,
   identity,
@@ -42,6 +42,10 @@ console.log(setup.confirmation);
 Top-level wallet methods merge common instructions, fetch a fresh blockhash,
 sign with `client.signer`, send the transaction, confirm it, and return the
 signature plus confirmation details.
+
+Write methods fail closed while the bundled release manifest is marked
+`candidate-not-deployed`. Use `allowUnverifiedDeployment` only for explicit
+local/devnet testing against a deployment you control.
 
 To return a transaction for external signing instead:
 
@@ -71,7 +75,7 @@ const { agentAsset } = await vault.identities.create({ uri });
 const [agentAccount] = vault.identities.getAgentAccountPda(agentAsset);
 ```
 
-`vault.wallets` has six high-level actions:
+`vault.wallets` has six high-level methods:
 
 ```ts
 vault.wallets.setup(...)
@@ -178,7 +182,7 @@ const result = await vault.wallets.execute(agentAsset, {
 });
 ```
 
-High-level actions return `{ transaction, signature, confirmation, signed, sent }`.
+Write methods return `{ transaction, signature, confirmation, signed, sent }`.
 For external signing, pass `{ send: false, sign: false }`. For advanced raw
 instruction construction, use `vault.wallets.instructions`.
 
@@ -210,5 +214,10 @@ accounts.
 ```bash
 npm ci
 npm run check
+npm run e2e:devnet
 npm run pack:dry-run
 ```
+
+`npm run e2e:devnet` performs live devnet deployment preflight before any
+write. Set `AGENT_VAULT_E2E_SEND=1` only when the Agent Vault program and global
+config are deployed and the signer is funded.

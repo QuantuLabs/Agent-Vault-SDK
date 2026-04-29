@@ -28,7 +28,7 @@ creation to `8004-solana` and exposes PDA helpers for the 8004 AgentAccount.
 Target API:
 
 ```ts
-AgentVaultClient.devnet({ connection, identity })
+AgentVaultClient.devnet({ connection, identity, signer })
 
 client.identities.create({ uri, atomEnabled, collectionPointer })
 client.identities.getAgentAccountPda(agentAsset)
@@ -36,7 +36,7 @@ client.identities.requireIdentitySdk()
 ```
 
 `client.wallets` is the Agent Vault surface. The recommended high-level surface
-has six actions:
+has six methods:
 
 Target API:
 
@@ -49,7 +49,7 @@ client.wallets.token(agentAsset, { action, holder, wallet, mint, amount, tokenPr
 client.wallets.execute(agentAsset, { holder, wallet, targetProgram, targetAccounts, postCheckData })
 ```
 
-These actions are the default DX surface. They sign, send, and confirm by
+The write methods are the default DX surface. They sign, send, and confirm by
 default when a signer is configured on the client or passed per call. Passing
 `send: false` returns a transaction without sending it; passing `send: false`
 and `sign: false` returns a transaction for external signing.
@@ -90,8 +90,9 @@ schema: "agent-vault.release-manifest.v0"
 name: "Agent Vault"
 ```
 
-Mainnet builders fail closed until canonical deployment verification is
-implemented and passes. Devnet/localnet may warn for candidate manifests.
+Writes fail closed when the bundled manifest is not marked `deployed`, and
+mainnet writes remain blocked by default. `allowUnverifiedDeployment` is only an
+explicit local/devnet escape hatch for testing deployments under direct control.
 
 ## Identity Creation
 
@@ -99,7 +100,7 @@ Identity creation is delegated to `8004-solana`:
 
 ```ts
 const identity = new SolanaSDK({ cluster: "devnet", signer });
-const client = new AgentVaultClient({ connection, identity });
+const client = new AgentVaultClient({ connection, identity, signer });
 await client.identities.create({ uri: "ipfs://..." });
 ```
 

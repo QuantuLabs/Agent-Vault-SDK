@@ -23,6 +23,7 @@
     "clean": "rm -rf dist",
     "build": "tsc -p tsconfig.json",
     "test": "tsx tests/pda.test.ts",
+    "e2e:devnet": "tsx scripts/e2e-devnet.ts",
     "pack:dry-run": "npm pack --dry-run",
     "prepack": "npm run build",
     "check": "npm run build && npm run test"
@@ -50,11 +51,13 @@
   "publishConfig": {
     "access": "public"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@solana/web3.js": "^1.95.0",
     "8004-solana": "^0.8.3"
   },
   "devDependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "8004-solana": "^0.8.3",
     "@types/node": "^20.10.6",
     "tsx": "^4.7.0",
     "typescript": "^5.9.3"
