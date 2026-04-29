@@ -38,7 +38,11 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/QuantuLabs/agent-vault-sdk.git"
+    "url": "https://github.com/QuantuLabs/Agent-Vault-SDK.git"
+  },
+  "homepage": "https://github.com/QuantuLabs/Agent-Vault-SDK#readme",
+  "bugs": {
+    "url": "https://github.com/QuantuLabs/Agent-Vault-SDK/issues"
   },
   "publishConfig": {
     "access": "public"
