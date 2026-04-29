@@ -58,10 +58,12 @@ async function main(): Promise<void> {
   const send = process.env.AGENT_VAULT_E2E_SEND === "1";
   const allowUnverifiedDeployment = process.env.AGENT_VAULT_ALLOW_UNVERIFIED === "1";
   const initGlobal = process.env.AGENT_VAULT_INIT_GLOBAL === "1";
+  const solUsdPrice = Number(process.env.SOL_USD_PRICE ?? "0");
   const coverage = new Set<number>();
 
   const signer = loadKeypair(keypairPath);
   const connection = new Connection(rpcUrl, "confirmed");
+  const costs = new CostTracker(connection, signer.publicKey, solUsdPrice);
   const identity = new SolanaSDK({
     cluster: "devnet",
     rpcUrl,
@@ -112,7 +114,7 @@ async function main(): Promise<void> {
 
   let verification = await vault.wallets.verifyDeployment();
   if (!verification.ok && initGlobal && send) {
-    await initializeGlobalConfig(connection, vault, signer, coverage);
+    await initializeGlobalConfig(connection, vault, signer, coverage, costs);
     verification = await vault.wallets.verifyDeployment();
   }
   if (!verification.ok) {
@@ -126,7 +128,9 @@ async function main(): Promise<void> {
   }
 
   const uri = `ipfs://agent-vault-sdk-e2e-${Date.now()}`;
-  const identityResult = await vault.identities.create({ uri, atomEnabled: false });
+  const identityResult = await costs.measure("8004 identity create", () =>
+    vault.identities.create({ uri, atomEnabled: false })
+  );
   const agentAsset = identityResult.agentAsset;
   console.log(`agent asset: ${agentAsset.toBase58()}`);
 
@@ -136,10 +140,12 @@ async function main(): Promise<void> {
     allowUnverifiedDeployment,
   });
   await simulate(connection, setupPreview.transaction, "wallets.setup");
-  const setup = await vault.wallets.setup(agentAsset, signer.publicKey, {
-    labels: ["treasury", "defi", "tokens", "wsol", "close"],
-    allowUnverifiedDeployment,
-  });
+  const setup = await costs.measure("agent_vault setup 5 wallets", () =>
+    vault.wallets.setup(agentAsset, signer.publicKey, {
+      labels: ["treasury", "defi", "tokens", "wsol", "close"],
+      allowUnverifiedDeployment,
+    })
+  );
   coverage.add(AGENT_VAULT_TAGS.initVaultConfig);
   coverage.add(AGENT_VAULT_TAGS.createWallet);
   assert.ok(setup.signature, "setup signature missing");
@@ -153,7 +159,7 @@ async function main(): Promise<void> {
   assert.equal(wallets[3]?.label, "wsol");
   assert.equal(wallets[4]?.label, "close");
 
-  await sendInstructions(connection, signer, coverage, "update_wallet_label", [
+  await sendInstructions(connection, signer, coverage, costs, "update_wallet_label", [
     vault.wallets.instructions.updateWalletLabel(agentAsset, signer.publicKey, 1, "router"),
   ], AGENT_VAULT_TAGS.updateWalletLabel);
 
@@ -165,12 +171,14 @@ async function main(): Promise<void> {
     allowUnverifiedDeployment,
   });
   await simulate(connection, fundPreview.transaction, "wallets.fund");
-  const fund = await vault.wallets.fund(agentAsset, {
-    wallet: 0,
-    payer: signer.publicKey,
-    amount: 20_000n,
-    allowUnverifiedDeployment,
-  });
+  const fund = await costs.measure("deposit_sol", () =>
+    vault.wallets.fund(agentAsset, {
+      wallet: 0,
+      payer: signer.publicKey,
+      amount: 20_000n,
+      allowUnverifiedDeployment,
+    })
+  );
   coverage.add(AGENT_VAULT_TAGS.depositSol);
   assert.ok(fund.signature, "fund signature missing");
   console.log(`fund: ${fund.signature}`);
@@ -184,13 +192,15 @@ async function main(): Promise<void> {
     allowUnverifiedDeployment,
   });
   await simulate(connection, internalPreview.transaction, "wallets.send internal");
-  const internal = await vault.wallets.send(agentAsset, {
-    holder: signer.publicKey,
-    from: 0,
-    to: 1,
-    amount: 5_000n,
-    allowUnverifiedDeployment,
-  });
+  const internal = await costs.measure("transfer_sol", () =>
+    vault.wallets.send(agentAsset, {
+      holder: signer.publicKey,
+      from: 0,
+      to: 1,
+      amount: 5_000n,
+      allowUnverifiedDeployment,
+    })
+  );
   coverage.add(AGENT_VAULT_TAGS.transferSol);
   assert.ok(internal.signature, "internal transfer signature missing");
   console.log(`internal transfer: ${internal.signature}`);
@@ -205,26 +215,29 @@ async function main(): Promise<void> {
     allowUnverifiedDeployment,
   });
   await simulate(connection, withdrawPreview.transaction, "wallets.send withdraw");
-  const withdraw = await vault.wallets.send(agentAsset, {
-    holder: signer.publicKey,
-    from: 1,
-    to: recipient,
-    amount: 1_000n,
-    allowUnverifiedDeployment,
-  });
+  const withdraw = await costs.measure("withdraw_sol", () =>
+    vault.wallets.send(agentAsset, {
+      holder: signer.publicKey,
+      from: 1,
+      to: recipient,
+      amount: 1_000n,
+      allowUnverifiedDeployment,
+    })
+  );
   coverage.add(AGENT_VAULT_TAGS.withdrawSol);
   assert.ok(withdraw.signature, "withdraw signature missing");
   console.log(`withdraw: ${withdraw.signature}`);
 
-  await runTokenFlow(connection, vault, signer, agentAsset, coverage);
-  await runWsolFlow(connection, vault, signer, agentAsset, coverage);
-  await runExecuteCpiFlow(connection, vault, signer, agentAsset, coverage);
-  await runCloseRecoveryFlow(connection, vault, signer, agentAsset, coverage);
+  await runTokenFlow(connection, vault, signer, agentAsset, coverage, costs);
+  await runWsolFlow(connection, vault, signer, agentAsset, coverage, costs);
+  await runExecuteCpiFlow(connection, vault, signer, agentAsset, coverage, costs);
+  await runCloseRecoveryFlow(connection, vault, signer, agentAsset, coverage, costs);
 
   const overview = await vault.wallets.overview(agentAsset, { limit: 10 });
   assert.equal(overview.wallets.length, 5);
   assert.equal(overview.wallets[4]?.dataStatus, "recovery");
   assertFullCoverage(coverage);
+  costs.print();
   console.log("devnet e2e completed with 100% Agent Vault instruction coverage via SDK");
 }
 
@@ -233,6 +246,7 @@ async function initializeGlobalConfig(
   vault: AgentVaultClient,
   signer: Keypair,
   coverage: Set<number>,
+  costs: CostTracker,
 ): Promise<void> {
   const ix = vault.wallets.instructions.initializeGlobalConfig({
     initializer: signer.publicKey,
@@ -244,11 +258,11 @@ async function initializeGlobalConfig(
     send: false,
   });
   await simulate(connection, preview.transaction, "initializeGlobalConfig");
-  const sent = await executeTransaction(connection, {
+  const sent = await costs.measure("initialize_global_config", () => executeTransaction(connection, {
     feePayer: signer.publicKey,
     instructions: [ix],
     signer,
-  });
+  }));
   assert.ok(sent.signature, "global config init signature missing");
   coverage.add(AGENT_VAULT_TAGS.initializeGlobalConfig);
   console.log(`global config init: ${sent.signature}`);
@@ -260,10 +274,11 @@ async function runTokenFlow(
   signer: Keypair,
   agentAsset: PublicKey,
   coverage: Set<number>,
+  costs: CostTracker,
 ): Promise<void> {
   const mint = Keypair.generate();
   const mintRent = await connection.getMinimumBalanceForRentExemption(MINT_SIZE);
-  await sendInstructions(connection, signer, coverage, "create spl mint", [
+  await sendInstructions(connection, signer, coverage, costs, "aux create spl mint", [
     SystemProgram.createAccount({
       fromPubkey: signer.publicKey,
       newAccountPubkey: mint.publicKey,
@@ -282,19 +297,21 @@ async function runTokenFlow(
     send: false,
   });
   await simulate(connection, createWalletAta.transaction, "wallets.token createAta");
-  const createWalletAtaSent = await vault.wallets.token(agentAsset, {
-    action: "createAta",
-    holder: signer.publicKey,
-    wallet: 2,
-    mint: mint.publicKey,
-  });
+  const createWalletAtaSent = await costs.measure("create_wallet_ata spl", () =>
+    vault.wallets.token(agentAsset, {
+      action: "createAta",
+      holder: signer.publicKey,
+      wallet: 2,
+      mint: mint.publicKey,
+    })
+  );
   coverage.add(AGENT_VAULT_TAGS.createWalletAta);
   assert.ok(createWalletAtaSent.signature, "create wallet ATA signature missing");
   console.log(`create wallet ATA: ${createWalletAtaSent.signature}`);
 
   const walletTokenAta = vault.wallets.ataAddress(agentAsset, 2, mint.publicKey);
   const destinationAta = getAssociatedTokenAddressSync(mint.publicKey, signer.publicKey);
-  await sendInstructions(connection, signer, coverage, "create holder token ATA", [
+  await sendInstructions(connection, signer, coverage, costs, "aux create holder token ATA", [
     createAssociatedTokenAccountInstruction(
       signer.publicKey,
       destinationAta,
@@ -303,7 +320,7 @@ async function runTokenFlow(
       SPL_TOKEN_PROGRAM_ID,
     ),
   ], null);
-  await sendInstructions(connection, signer, coverage, "mint tokens to wallet ATA", [
+  await sendInstructions(connection, signer, coverage, costs, "aux mint tokens to wallet ATA", [
     createMintToInstruction(mint.publicKey, walletTokenAta, signer.publicKey, 7n, [], SPL_TOKEN_PROGRAM_ID),
   ], null);
 
@@ -317,14 +334,16 @@ async function runTokenFlow(
     send: false,
   });
   await simulate(connection, transfer.transaction, "wallets.send transferSpl");
-  const transferSent = await vault.wallets.send(agentAsset, {
-    holder: signer.publicKey,
-    from: 2,
-    to: destinationAta,
-    mint: mint.publicKey,
-    amount: 7n,
-    decimals: 6,
-  });
+  const transferSent = await costs.measure("transfer_spl", () =>
+    vault.wallets.send(agentAsset, {
+      holder: signer.publicKey,
+      from: 2,
+      to: destinationAta,
+      mint: mint.publicKey,
+      amount: 7n,
+      decimals: 6,
+    })
+  );
   coverage.add(AGENT_VAULT_TAGS.transferSpl);
   assert.ok(transferSent.signature, "transfer SPL signature missing");
   console.log(`transfer SPL: ${transferSent.signature}`);
@@ -338,13 +357,15 @@ async function runTokenFlow(
     send: false,
   });
   await simulate(connection, closeAta.transaction, "wallets.token closeAta");
-  const closeAtaSent = await vault.wallets.token(agentAsset, {
-    action: "closeAta",
-    holder: signer.publicKey,
-    wallet: 2,
-    mint: mint.publicKey,
-    rentReceiver: signer.publicKey,
-  });
+  const closeAtaSent = await costs.measure("close_wallet_ata spl", () =>
+    vault.wallets.token(agentAsset, {
+      action: "closeAta",
+      holder: signer.publicKey,
+      wallet: 2,
+      mint: mint.publicKey,
+      rentReceiver: signer.publicKey,
+    })
+  );
   coverage.add(AGENT_VAULT_TAGS.closeWalletAta);
   assert.ok(closeAtaSent.signature, "close ATA signature missing");
   console.log(`close wallet ATA: ${closeAtaSent.signature}`);
@@ -356,6 +377,7 @@ async function runWsolFlow(
   signer: Keypair,
   agentAsset: PublicKey,
   coverage: Set<number>,
+  costs: CostTracker,
 ): Promise<void> {
   const fundWsol = await vault.wallets.fund(agentAsset, {
     wallet: 3,
@@ -364,11 +386,13 @@ async function runWsolFlow(
     send: false,
   });
   await simulate(connection, fundWsol.transaction, "wallets.fund wsol");
-  const fundWsolSent = await vault.wallets.fund(agentAsset, {
-    wallet: 3,
-    payer: signer.publicKey,
-    amount: 50_000n,
-  });
+  const fundWsolSent = await costs.measure("deposit_sol wsol wallet", () =>
+    vault.wallets.fund(agentAsset, {
+      wallet: 3,
+      payer: signer.publicKey,
+      amount: 50_000n,
+    })
+  );
   assert.ok(fundWsolSent.signature, "fund WSOL wallet signature missing");
 
   const createWsolAta = await vault.wallets.token(agentAsset, {
@@ -379,12 +403,14 @@ async function runWsolFlow(
     send: false,
   });
   await simulate(connection, createWsolAta.transaction, "wallets.token create WSOL ATA");
-  const createWsolAtaSent = await vault.wallets.token(agentAsset, {
-    action: "createAta",
-    holder: signer.publicKey,
-    wallet: 3,
-    mint: NATIVE_MINT_ID,
-  });
+  const createWsolAtaSent = await costs.measure("create_wallet_ata wsol", () =>
+    vault.wallets.token(agentAsset, {
+      action: "createAta",
+      holder: signer.publicKey,
+      wallet: 3,
+      mint: NATIVE_MINT_ID,
+    })
+  );
   coverage.add(AGENT_VAULT_TAGS.createWalletAta);
   assert.ok(createWsolAtaSent.signature, "create WSOL ATA signature missing");
 
@@ -396,12 +422,14 @@ async function runWsolFlow(
     send: false,
   });
   await simulate(connection, wrap.transaction, "wallets.token wrapSol");
-  const wrapSent = await vault.wallets.token(agentAsset, {
-    action: "wrapSol",
-    holder: signer.publicKey,
-    wallet: 3,
-    amount: 10_000n,
-  });
+  const wrapSent = await costs.measure("wrap_sol", () =>
+    vault.wallets.token(agentAsset, {
+      action: "wrapSol",
+      holder: signer.publicKey,
+      wallet: 3,
+      amount: 10_000n,
+    })
+  );
   coverage.add(AGENT_VAULT_TAGS.wrapSol);
   assert.ok(wrapSent.signature, "wrap SOL signature missing");
   console.log(`wrap SOL: ${wrapSent.signature}`);
@@ -413,11 +441,13 @@ async function runWsolFlow(
     send: false,
   });
   await simulate(connection, unwrap.transaction, "wallets.token unwrapSol");
-  const unwrapSent = await vault.wallets.token(agentAsset, {
-    action: "unwrapSol",
-    holder: signer.publicKey,
-    wallet: 3,
-  });
+  const unwrapSent = await costs.measure("unwrap_sol", () =>
+    vault.wallets.token(agentAsset, {
+      action: "unwrapSol",
+      holder: signer.publicKey,
+      wallet: 3,
+    })
+  );
   coverage.add(AGENT_VAULT_TAGS.unwrapSol);
   assert.ok(unwrapSent.signature, "unwrap SOL signature missing");
   console.log(`unwrap SOL: ${unwrapSent.signature}`);
@@ -429,6 +459,7 @@ async function runExecuteCpiFlow(
   signer: Keypair,
   agentAsset: PublicKey,
   coverage: Set<number>,
+  costs: CostTracker,
 ): Promise<void> {
   const postCheckData = solMinPostCheck(0, 0n);
   const execute = await vault.wallets.execute(agentAsset, {
@@ -443,16 +474,18 @@ async function runExecuteCpiFlow(
     send: false,
   });
   await simulate(connection, execute.transaction, "wallets.execute memo");
-  const executeSent = await vault.wallets.execute(agentAsset, {
-    holder: signer.publicKey,
-    wallet: 1,
-    walletMetaIndex: 0,
-    targetProgram: MEMO_PROGRAM_ID,
-    targetAccounts: [],
-    targetInstructionData: Buffer.from("agent-vault-sdk-e2e", "utf8"),
-    postCheckCount: 1,
-    postCheckData,
-  });
+  const executeSent = await costs.measure("execute_cpi_checked memo", () =>
+    vault.wallets.execute(agentAsset, {
+      holder: signer.publicKey,
+      wallet: 1,
+      walletMetaIndex: 0,
+      targetProgram: MEMO_PROGRAM_ID,
+      targetAccounts: [],
+      targetInstructionData: Buffer.from("agent-vault-sdk-e2e", "utf8"),
+      postCheckCount: 1,
+      postCheckData,
+    })
+  );
   coverage.add(AGENT_VAULT_TAGS.executeCpiChecked);
   assert.ok(executeSent.signature, "execute CPI signature missing");
   console.log(`execute CPI: ${executeSent.signature}`);
@@ -464,11 +497,12 @@ async function runCloseRecoveryFlow(
   signer: Keypair,
   agentAsset: PublicKey,
   coverage: Set<number>,
+  costs: CostTracker,
 ): Promise<void> {
-  await sendInstructions(connection, signer, coverage, "close_wallet", [
+  await sendInstructions(connection, signer, coverage, costs, "close_wallet", [
     vault.wallets.instructions.closeWallet(agentAsset, signer.publicKey, 4, signer.publicKey),
   ], AGENT_VAULT_TAGS.closeWallet);
-  await sendInstructions(connection, signer, coverage, "reopen_wallet_for_recovery", [
+  await sendInstructions(connection, signer, coverage, costs, "reopen_wallet_for_recovery", [
     vault.wallets.instructions.reopenForRecovery(agentAsset, signer.publicKey, 4, "recovery"),
   ], AGENT_VAULT_TAGS.reopenWalletForRecovery);
 }
@@ -477,6 +511,7 @@ async function sendInstructions(
   connection: Connection,
   signer: Keypair,
   coverage: Set<number>,
+  costs: CostTracker,
   label: string,
   instructions: TransactionInstruction[],
   coverageTag: number | null,
@@ -490,17 +525,91 @@ async function sendInstructions(
     send: false,
   });
   await simulate(connection, preview.transaction, label);
-  const sent = await executeTransaction(connection, {
+  const sent = await costs.measure(label, () => executeTransaction(connection, {
     feePayer: signer.publicKey,
     instructions,
     signer,
     signers,
-  });
+  }));
   assert.ok(sent.signature, `${label} signature missing`);
   if (coverageTag !== null) {
     coverage.add(coverageTag);
   }
   console.log(`${label}: ${sent.signature}`);
+}
+
+class CostTracker {
+  private readonly rows: Array<{
+    label: string;
+    signature: string | null;
+    feeLamports: number | null;
+    netLamports: number;
+  }> = [];
+
+  constructor(
+    private readonly connection: Connection,
+    private readonly payer: PublicKey,
+    private readonly solUsdPrice: number,
+  ) {}
+
+  async measure<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    const before = await this.connection.getBalance(this.payer, "confirmed");
+    const result = await fn();
+    const signature = extractSignature(result);
+    const feeLamports = signature ? await transactionFeeLamports(this.connection, signature) : null;
+    const after = await this.connection.getBalance(this.payer, "confirmed");
+    const netLamports = before - after;
+    this.rows.push({ label, signature, feeLamports, netLamports });
+    return result;
+  }
+
+  print(): void {
+    console.log("real devnet cost report:");
+    console.log("action | tx fee SOL | signer net SOL | signer net USD | signature");
+    for (const row of this.rows) {
+      console.log([
+        row.label,
+        lamportsToSol(row.feeLamports ?? 0),
+        lamportsToSol(row.netLamports),
+        this.usd(row.netLamports),
+        row.signature ?? "",
+      ].join(" | "));
+    }
+  }
+
+  private usd(lamports: number): string {
+    if (!Number.isFinite(this.solUsdPrice) || this.solUsdPrice <= 0) {
+      return "n/a";
+    }
+    return (Number(lamportsToSolNumber(lamports)) * this.solUsdPrice).toFixed(6);
+  }
+}
+
+function extractSignature(value: unknown): string | null {
+  if (value && typeof value === "object" && "signature" in value) {
+    const signature = (value as { signature?: unknown }).signature;
+    return typeof signature === "string" && signature.length > 0 ? signature : null;
+  }
+  if (value && typeof value === "object" && "result" in value) {
+    return extractSignature((value as { result?: unknown }).result);
+  }
+  return null;
+}
+
+async function transactionFeeLamports(connection: Connection, signature: string): Promise<number | null> {
+  const tx = await connection.getTransaction(signature, {
+    commitment: "confirmed",
+    maxSupportedTransactionVersion: 0,
+  });
+  return tx?.meta?.fee ?? null;
+}
+
+function lamportsToSol(lamports: number): string {
+  return lamportsToSolNumber(lamports).toFixed(9);
+}
+
+function lamportsToSolNumber(lamports: number): number {
+  return lamports / LAMPORTS_PER_SOL;
 }
 
 function solMinPostCheck(accountIndex: number, minLamports: bigint): Buffer {
