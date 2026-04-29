@@ -56,9 +56,10 @@
     "8004-solana": "^0.8.3"
   },
   "devDependencies": {
+    "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.95.0",
-    "8004-solana": "^0.8.3",
     "@types/node": "^20.10.6",
+    "8004-solana": "^0.8.3",
     "tsx": "^4.7.0",
     "typescript": "^5.9.3"
   },

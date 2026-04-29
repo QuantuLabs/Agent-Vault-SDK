@@ -301,6 +301,9 @@ export class AgentVaultInstructions {
     if (postCheckCount > MAX_POST_CHECKS) {
       throw new RangeError(`postCheckCount must be <= ${MAX_POST_CHECKS}`);
     }
+    if (postCheckCount === 0) {
+      throw new RangeError("postCheckCount must be at least 1");
+    }
     const targetAccounts = params.targetAccounts.map((account) =>
       meta(account.pubkey, account.isSigner ?? false, account.isWritable ?? false)
     );

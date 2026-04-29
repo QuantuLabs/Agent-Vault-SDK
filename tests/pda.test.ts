@@ -195,6 +195,17 @@ assert.throws(
   }),
   /decimals/,
 );
+assert.throws(
+  () => new AgentVaultInstructions().executeCpiChecked(agentAsset, holder, 0, {
+    walletMetaIndex: 0,
+    targetProgram: holder,
+    targetAccounts: [],
+    targetInstructionData: Buffer.alloc(0),
+    postCheckCount: 0,
+    postCheckData: Buffer.alloc(0),
+  }),
+  /postCheckCount/,
+);
 
 const failedConnection = {
   ...connection,

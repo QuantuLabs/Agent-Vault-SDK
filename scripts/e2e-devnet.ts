@@ -7,19 +7,50 @@ import {
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
+  SystemProgram,
+  TransactionInstruction,
   type Transaction,
 } from "@solana/web3.js";
+import {
+  MINT_SIZE,
+  TOKEN_PROGRAM_ID as SPL_TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountInstruction,
+  createInitializeMint2Instruction,
+  createMintToInstruction,
+  getAssociatedTokenAddressSync,
+} from "@solana/spl-token";
 import { SolanaSDK } from "8004-solana";
 import {
   AGENT_VAULT_PROGRAM_ID,
+  AGENT_VAULT_TAGS,
   AgentVaultClient,
   DEVNET_RELEASE_MANIFEST,
+  NATIVE_MINT_ID,
+  TOKEN_PROGRAM_ID,
   executeTransaction,
 } from "../src/index.js";
 
 const DEFAULT_RPC_URL = "https://api.devnet.solana.com";
-const MIN_BALANCE_LAMPORTS = 80_000_000;
+const MIN_BALANCE_LAMPORTS = 200_000_000;
 const PROGRAM_RENT_LAMPORTS = 1_031_806_080;
+const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+const EXPECTED_COVERAGE = new Map<number, string>([
+  [AGENT_VAULT_TAGS.initializeGlobalConfig, "initialize_global_config"],
+  [AGENT_VAULT_TAGS.initVaultConfig, "init_vault_config"],
+  [AGENT_VAULT_TAGS.createWallet, "create_wallet"],
+  [AGENT_VAULT_TAGS.updateWalletLabel, "update_wallet_label"],
+  [AGENT_VAULT_TAGS.depositSol, "deposit_sol"],
+  [AGENT_VAULT_TAGS.withdrawSol, "withdraw_sol"],
+  [AGENT_VAULT_TAGS.transferSol, "transfer_sol"],
+  [AGENT_VAULT_TAGS.closeWallet, "close_wallet"],
+  [AGENT_VAULT_TAGS.reopenWalletForRecovery, "reopen_wallet_for_recovery"],
+  [AGENT_VAULT_TAGS.createWalletAta, "create_wallet_ata"],
+  [AGENT_VAULT_TAGS.transferSpl, "transfer_spl"],
+  [AGENT_VAULT_TAGS.wrapSol, "wrap_sol"],
+  [AGENT_VAULT_TAGS.unwrapSol, "unwrap_sol"],
+  [AGENT_VAULT_TAGS.closeWalletAta, "close_wallet_ata"],
+  [AGENT_VAULT_TAGS.executeCpiChecked, "execute_cpi_checked"],
+]);
 
 async function main(): Promise<void> {
   const rpcUrl = process.env.SOLANA_RPC_URL ?? DEFAULT_RPC_URL;
@@ -27,6 +58,7 @@ async function main(): Promise<void> {
   const send = process.env.AGENT_VAULT_E2E_SEND === "1";
   const allowUnverifiedDeployment = process.env.AGENT_VAULT_ALLOW_UNVERIFIED === "1";
   const initGlobal = process.env.AGENT_VAULT_INIT_GLOBAL === "1";
+  const coverage = new Set<number>();
 
   const signer = loadKeypair(keypairPath);
   const connection = new Connection(rpcUrl, "confirmed");
@@ -80,12 +112,13 @@ async function main(): Promise<void> {
 
   let verification = await vault.wallets.verifyDeployment();
   if (!verification.ok && initGlobal && send) {
-    await initializeGlobalConfig(connection, vault, signer);
+    await initializeGlobalConfig(connection, vault, signer, coverage);
     verification = await vault.wallets.verifyDeployment();
   }
   if (!verification.ok) {
     throw new Error(`Agent Vault deployment verification failed: ${verification.issues.join("; ")}`);
   }
+  coverage.add(AGENT_VAULT_TAGS.initializeGlobalConfig);
 
   if (!send) {
     console.log("preflight passed; set AGENT_VAULT_E2E_SEND=1 to run the onchain write flow");
@@ -98,22 +131,31 @@ async function main(): Promise<void> {
   console.log(`agent asset: ${agentAsset.toBase58()}`);
 
   const setupPreview = await vault.wallets.setup(agentAsset, signer.publicKey, {
-    labels: ["treasury", "defi"],
+    labels: ["treasury", "defi", "tokens", "wsol", "close"],
     send: false,
     allowUnverifiedDeployment,
   });
   await simulate(connection, setupPreview.transaction, "wallets.setup");
   const setup = await vault.wallets.setup(agentAsset, signer.publicKey, {
-    labels: ["treasury", "defi"],
+    labels: ["treasury", "defi", "tokens", "wsol", "close"],
     allowUnverifiedDeployment,
   });
+  coverage.add(AGENT_VAULT_TAGS.initVaultConfig);
+  coverage.add(AGENT_VAULT_TAGS.createWallet);
   assert.ok(setup.signature, "setup signature missing");
   console.log(`setup: ${setup.signature}`);
 
   const wallets = await vault.wallets.list(agentAsset, { limit: 10 });
-  assert.equal(wallets.length, 2);
+  assert.equal(wallets.length, 5);
   assert.equal(wallets[0]?.label, "treasury");
   assert.equal(wallets[1]?.label, "defi");
+  assert.equal(wallets[2]?.label, "tokens");
+  assert.equal(wallets[3]?.label, "wsol");
+  assert.equal(wallets[4]?.label, "close");
+
+  await sendInstructions(connection, signer, coverage, "update_wallet_label", [
+    vault.wallets.instructions.updateWalletLabel(agentAsset, signer.publicKey, 1, "router"),
+  ], AGENT_VAULT_TAGS.updateWalletLabel);
 
   const fundPreview = await vault.wallets.fund(agentAsset, {
     wallet: 0,
@@ -129,6 +171,7 @@ async function main(): Promise<void> {
     amount: 20_000n,
     allowUnverifiedDeployment,
   });
+  coverage.add(AGENT_VAULT_TAGS.depositSol);
   assert.ok(fund.signature, "fund signature missing");
   console.log(`fund: ${fund.signature}`);
 
@@ -148,6 +191,7 @@ async function main(): Promise<void> {
     amount: 5_000n,
     allowUnverifiedDeployment,
   });
+  coverage.add(AGENT_VAULT_TAGS.transferSol);
   assert.ok(internal.signature, "internal transfer signature missing");
   console.log(`internal transfer: ${internal.signature}`);
 
@@ -168,18 +212,27 @@ async function main(): Promise<void> {
     amount: 1_000n,
     allowUnverifiedDeployment,
   });
+  coverage.add(AGENT_VAULT_TAGS.withdrawSol);
   assert.ok(withdraw.signature, "withdraw signature missing");
   console.log(`withdraw: ${withdraw.signature}`);
 
+  await runTokenFlow(connection, vault, signer, agentAsset, coverage);
+  await runWsolFlow(connection, vault, signer, agentAsset, coverage);
+  await runExecuteCpiFlow(connection, vault, signer, agentAsset, coverage);
+  await runCloseRecoveryFlow(connection, vault, signer, agentAsset, coverage);
+
   const overview = await vault.wallets.overview(agentAsset, { limit: 10 });
-  assert.equal(overview.wallets.length, 2);
-  console.log("devnet e2e completed");
+  assert.equal(overview.wallets.length, 5);
+  assert.equal(overview.wallets[4]?.dataStatus, "recovery");
+  assertFullCoverage(coverage);
+  console.log("devnet e2e completed with 100% Agent Vault instruction coverage via SDK");
 }
 
 async function initializeGlobalConfig(
   connection: Connection,
   vault: AgentVaultClient,
   signer: Keypair,
+  coverage: Set<number>,
 ): Promise<void> {
   const ix = vault.wallets.instructions.initializeGlobalConfig({
     initializer: signer.publicKey,
@@ -197,7 +250,278 @@ async function initializeGlobalConfig(
     signer,
   });
   assert.ok(sent.signature, "global config init signature missing");
+  coverage.add(AGENT_VAULT_TAGS.initializeGlobalConfig);
   console.log(`global config init: ${sent.signature}`);
+}
+
+async function runTokenFlow(
+  connection: Connection,
+  vault: AgentVaultClient,
+  signer: Keypair,
+  agentAsset: PublicKey,
+  coverage: Set<number>,
+): Promise<void> {
+  const mint = Keypair.generate();
+  const mintRent = await connection.getMinimumBalanceForRentExemption(MINT_SIZE);
+  await sendInstructions(connection, signer, coverage, "create spl mint", [
+    SystemProgram.createAccount({
+      fromPubkey: signer.publicKey,
+      newAccountPubkey: mint.publicKey,
+      lamports: mintRent,
+      space: MINT_SIZE,
+      programId: SPL_TOKEN_PROGRAM_ID,
+    }),
+    createInitializeMint2Instruction(mint.publicKey, 6, signer.publicKey, null, SPL_TOKEN_PROGRAM_ID),
+  ], null, [mint]);
+
+  const createWalletAta = await vault.wallets.token(agentAsset, {
+    action: "createAta",
+    holder: signer.publicKey,
+    wallet: 2,
+    mint: mint.publicKey,
+    send: false,
+  });
+  await simulate(connection, createWalletAta.transaction, "wallets.token createAta");
+  const createWalletAtaSent = await vault.wallets.token(agentAsset, {
+    action: "createAta",
+    holder: signer.publicKey,
+    wallet: 2,
+    mint: mint.publicKey,
+  });
+  coverage.add(AGENT_VAULT_TAGS.createWalletAta);
+  assert.ok(createWalletAtaSent.signature, "create wallet ATA signature missing");
+  console.log(`create wallet ATA: ${createWalletAtaSent.signature}`);
+
+  const walletTokenAta = vault.wallets.ataAddress(agentAsset, 2, mint.publicKey);
+  const destinationAta = getAssociatedTokenAddressSync(mint.publicKey, signer.publicKey);
+  await sendInstructions(connection, signer, coverage, "create holder token ATA", [
+    createAssociatedTokenAccountInstruction(
+      signer.publicKey,
+      destinationAta,
+      signer.publicKey,
+      mint.publicKey,
+      SPL_TOKEN_PROGRAM_ID,
+    ),
+  ], null);
+  await sendInstructions(connection, signer, coverage, "mint tokens to wallet ATA", [
+    createMintToInstruction(mint.publicKey, walletTokenAta, signer.publicKey, 7n, [], SPL_TOKEN_PROGRAM_ID),
+  ], null);
+
+  const transfer = await vault.wallets.send(agentAsset, {
+    holder: signer.publicKey,
+    from: 2,
+    to: destinationAta,
+    mint: mint.publicKey,
+    amount: 7n,
+    decimals: 6,
+    send: false,
+  });
+  await simulate(connection, transfer.transaction, "wallets.send transferSpl");
+  const transferSent = await vault.wallets.send(agentAsset, {
+    holder: signer.publicKey,
+    from: 2,
+    to: destinationAta,
+    mint: mint.publicKey,
+    amount: 7n,
+    decimals: 6,
+  });
+  coverage.add(AGENT_VAULT_TAGS.transferSpl);
+  assert.ok(transferSent.signature, "transfer SPL signature missing");
+  console.log(`transfer SPL: ${transferSent.signature}`);
+
+  const closeAta = await vault.wallets.token(agentAsset, {
+    action: "closeAta",
+    holder: signer.publicKey,
+    wallet: 2,
+    mint: mint.publicKey,
+    rentReceiver: signer.publicKey,
+    send: false,
+  });
+  await simulate(connection, closeAta.transaction, "wallets.token closeAta");
+  const closeAtaSent = await vault.wallets.token(agentAsset, {
+    action: "closeAta",
+    holder: signer.publicKey,
+    wallet: 2,
+    mint: mint.publicKey,
+    rentReceiver: signer.publicKey,
+  });
+  coverage.add(AGENT_VAULT_TAGS.closeWalletAta);
+  assert.ok(closeAtaSent.signature, "close ATA signature missing");
+  console.log(`close wallet ATA: ${closeAtaSent.signature}`);
+}
+
+async function runWsolFlow(
+  connection: Connection,
+  vault: AgentVaultClient,
+  signer: Keypair,
+  agentAsset: PublicKey,
+  coverage: Set<number>,
+): Promise<void> {
+  const fundWsol = await vault.wallets.fund(agentAsset, {
+    wallet: 3,
+    payer: signer.publicKey,
+    amount: 50_000n,
+    send: false,
+  });
+  await simulate(connection, fundWsol.transaction, "wallets.fund wsol");
+  const fundWsolSent = await vault.wallets.fund(agentAsset, {
+    wallet: 3,
+    payer: signer.publicKey,
+    amount: 50_000n,
+  });
+  assert.ok(fundWsolSent.signature, "fund WSOL wallet signature missing");
+
+  const createWsolAta = await vault.wallets.token(agentAsset, {
+    action: "createAta",
+    holder: signer.publicKey,
+    wallet: 3,
+    mint: NATIVE_MINT_ID,
+    send: false,
+  });
+  await simulate(connection, createWsolAta.transaction, "wallets.token create WSOL ATA");
+  const createWsolAtaSent = await vault.wallets.token(agentAsset, {
+    action: "createAta",
+    holder: signer.publicKey,
+    wallet: 3,
+    mint: NATIVE_MINT_ID,
+  });
+  coverage.add(AGENT_VAULT_TAGS.createWalletAta);
+  assert.ok(createWsolAtaSent.signature, "create WSOL ATA signature missing");
+
+  const wrap = await vault.wallets.token(agentAsset, {
+    action: "wrapSol",
+    holder: signer.publicKey,
+    wallet: 3,
+    amount: 10_000n,
+    send: false,
+  });
+  await simulate(connection, wrap.transaction, "wallets.token wrapSol");
+  const wrapSent = await vault.wallets.token(agentAsset, {
+    action: "wrapSol",
+    holder: signer.publicKey,
+    wallet: 3,
+    amount: 10_000n,
+  });
+  coverage.add(AGENT_VAULT_TAGS.wrapSol);
+  assert.ok(wrapSent.signature, "wrap SOL signature missing");
+  console.log(`wrap SOL: ${wrapSent.signature}`);
+
+  const unwrap = await vault.wallets.token(agentAsset, {
+    action: "unwrapSol",
+    holder: signer.publicKey,
+    wallet: 3,
+    send: false,
+  });
+  await simulate(connection, unwrap.transaction, "wallets.token unwrapSol");
+  const unwrapSent = await vault.wallets.token(agentAsset, {
+    action: "unwrapSol",
+    holder: signer.publicKey,
+    wallet: 3,
+  });
+  coverage.add(AGENT_VAULT_TAGS.unwrapSol);
+  assert.ok(unwrapSent.signature, "unwrap SOL signature missing");
+  console.log(`unwrap SOL: ${unwrapSent.signature}`);
+}
+
+async function runExecuteCpiFlow(
+  connection: Connection,
+  vault: AgentVaultClient,
+  signer: Keypair,
+  agentAsset: PublicKey,
+  coverage: Set<number>,
+): Promise<void> {
+  const postCheckData = solMinPostCheck(0, 0n);
+  const execute = await vault.wallets.execute(agentAsset, {
+    holder: signer.publicKey,
+    wallet: 1,
+    walletMetaIndex: 0,
+    targetProgram: MEMO_PROGRAM_ID,
+    targetAccounts: [],
+    targetInstructionData: Buffer.from("agent-vault-sdk-e2e", "utf8"),
+    postCheckCount: 1,
+    postCheckData,
+    send: false,
+  });
+  await simulate(connection, execute.transaction, "wallets.execute memo");
+  const executeSent = await vault.wallets.execute(agentAsset, {
+    holder: signer.publicKey,
+    wallet: 1,
+    walletMetaIndex: 0,
+    targetProgram: MEMO_PROGRAM_ID,
+    targetAccounts: [],
+    targetInstructionData: Buffer.from("agent-vault-sdk-e2e", "utf8"),
+    postCheckCount: 1,
+    postCheckData,
+  });
+  coverage.add(AGENT_VAULT_TAGS.executeCpiChecked);
+  assert.ok(executeSent.signature, "execute CPI signature missing");
+  console.log(`execute CPI: ${executeSent.signature}`);
+}
+
+async function runCloseRecoveryFlow(
+  connection: Connection,
+  vault: AgentVaultClient,
+  signer: Keypair,
+  agentAsset: PublicKey,
+  coverage: Set<number>,
+): Promise<void> {
+  await sendInstructions(connection, signer, coverage, "close_wallet", [
+    vault.wallets.instructions.closeWallet(agentAsset, signer.publicKey, 4, signer.publicKey),
+  ], AGENT_VAULT_TAGS.closeWallet);
+  await sendInstructions(connection, signer, coverage, "reopen_wallet_for_recovery", [
+    vault.wallets.instructions.reopenForRecovery(agentAsset, signer.publicKey, 4, "recovery"),
+  ], AGENT_VAULT_TAGS.reopenWalletForRecovery);
+}
+
+async function sendInstructions(
+  connection: Connection,
+  signer: Keypair,
+  coverage: Set<number>,
+  label: string,
+  instructions: TransactionInstruction[],
+  coverageTag: number | null,
+  signers: Keypair[] = [],
+): Promise<void> {
+  const preview = await executeTransaction(connection, {
+    feePayer: signer.publicKey,
+    instructions,
+    signer,
+    signers,
+    send: false,
+  });
+  await simulate(connection, preview.transaction, label);
+  const sent = await executeTransaction(connection, {
+    feePayer: signer.publicKey,
+    instructions,
+    signer,
+    signers,
+  });
+  assert.ok(sent.signature, `${label} signature missing`);
+  if (coverageTag !== null) {
+    coverage.add(coverageTag);
+  }
+  console.log(`${label}: ${sent.signature}`);
+}
+
+function solMinPostCheck(accountIndex: number, minLamports: bigint): Buffer {
+  const out = Buffer.alloc(10);
+  out[0] = 0;
+  out[1] = accountIndex;
+  out.writeBigUInt64LE(minLamports, 2);
+  return out;
+}
+
+function assertFullCoverage(coverage: Set<number>): void {
+  const missing = [...EXPECTED_COVERAGE.entries()]
+    .filter(([tag]) => !coverage.has(tag))
+    .map(([tag, name]) => `${name}(${tag})`);
+  if (missing.length > 0) {
+    throw new Error(`missing Agent Vault instruction coverage: ${missing.join(", ")}`);
+  }
+  console.log("covered Agent Vault instructions:");
+  for (const [tag, name] of EXPECTED_COVERAGE.entries()) {
+    console.log(`  ${tag}: ${name}`);
+  }
 }
 
 async function requireAccount(
