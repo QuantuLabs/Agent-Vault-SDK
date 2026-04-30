@@ -130,6 +130,24 @@ await assert.rejects(
   }),
   /candidate-not-deployed/,
 );
+await assert.rejects(
+  () => strictClient.wallets.fund(agentAsset, {
+    wallet: 0,
+    payer: holder,
+    amount: 1n,
+    send: false,
+  }),
+  /candidate-not-deployed/,
+);
+const strictUnsignedPreview = await strictClient.wallets.fund(agentAsset, {
+  wallet: 0,
+  payer: holder,
+  amount: 1n,
+  send: false,
+  sign: false,
+});
+assert.equal(strictUnsignedPreview.sent, false);
+assert.equal(strictUnsignedPreview.signed, false);
 
 const unsignedSetup = await client.wallets.setup(agentAsset, holder, {
   labels: ["unsigned"],

@@ -449,7 +449,11 @@ export class AgentVaultWalletsClient {
   }
 
   private assertWriteAllowed(options: WalletActionOptions): void {
-    if (options.send === false || options.allowUnverifiedDeployment || this.allowUnverifiedDeployment) {
+    if (
+      (options.send === false && options.sign === false)
+      || options.allowUnverifiedDeployment
+      || this.allowUnverifiedDeployment
+    ) {
       return;
     }
     const manifest = this.instructions.releaseManifest;
