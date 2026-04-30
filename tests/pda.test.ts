@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { Keypair, PublicKey, type Connection } from "@solana/web3.js";
 import {
   AGENT_VAULT_PROGRAM_ID,
@@ -6,8 +7,11 @@ import {
   AgentVaultClient,
   AgentVaultInstructions,
   AgentVaultPdas,
+  BPF_LOADER_UPGRADEABLE_PROGRAM_ID,
+  DISCRIMINATOR_GLOBAL_CONFIG,
   DISCRIMINATOR_WALLET,
   DEVNET_RELEASE_MANIFEST,
+  GLOBAL_CONFIG_LENGTH,
   NATIVE_MINT_ID,
   SPL_TOKEN_SYNC_NATIVE_TAG,
   TOKEN_PROGRAM_ID,
@@ -15,6 +19,7 @@ import {
   encodeLabel,
   parseWallet,
   u64Le,
+  type AgentVaultReleaseManifest,
 } from "../src/index.js";
 
 const agentAsset = new PublicKey("6CTyGPcn8dMwKEqgtvx2XCpkGUd7uqCVK6937RSM5bhA");
@@ -227,3 +232,111 @@ await assert.rejects(
   }),
   /failed confirmation/,
 );
+
+const programDataAddress = Keypair.generate().publicKey;
+const elfBytes = Buffer.from("agent-vault-fixture-elf", "utf8");
+const elfHash = createHash("sha256").update(elfBytes).digest("hex");
+const customManifest = {
+  ...DEVNET_RELEASE_MANIFEST,
+  program: {
+    ...DEVNET_RELEASE_MANIFEST.program,
+    sbfElfSha256: elfHash,
+    sbfElfSizeBytes: elfBytes.length,
+  },
+  expectedGlobalConfig: {
+    ...DEVNET_RELEASE_MANIFEST.expectedGlobalConfig,
+    feeTreasury: holder.toBase58(),
+  },
+  deploymentVerification: {
+    programDataAddress: programDataAddress.toBase58(),
+    programDataSha256: elfHash,
+    upgradeAuthority: holder.toBase58(),
+    upgradePolicy: "devnet-upgradeable",
+  },
+} satisfies AgentVaultReleaseManifest;
+const globalConfigAddress = new AgentVaultPdas(AGENT_VAULT_PROGRAM_ID, registryProgram).globalConfig()[0];
+const verifiedConnection = {
+  ...connection,
+  getAccountInfo: async (address: PublicKey) => {
+    if (address.equals(AGENT_VAULT_PROGRAM_ID)) {
+      return accountInfo(programStateData(programDataAddress), BPF_LOADER_UPGRADEABLE_PROGRAM_ID, true);
+    }
+    if (address.equals(programDataAddress)) {
+      return accountInfo(programDataStateData(elfBytes, holder), BPF_LOADER_UPGRADEABLE_PROGRAM_ID, false);
+    }
+    if (address.equals(globalConfigAddress)) {
+      return accountInfo(globalConfigData(customManifest), AGENT_VAULT_PROGRAM_ID, false);
+    }
+    return null;
+  },
+} as unknown as Connection;
+const verifiedClient = new AgentVaultClient({
+  connection: verifiedConnection,
+  releaseManifest: customManifest,
+  signer: holderSigner,
+});
+const verification = await verifiedClient.wallets.verifyDeployment();
+assert.equal(verification.ok, true);
+assert.equal(verification.status, "verified");
+
+const badHashManifest = {
+  ...customManifest,
+  program: {
+    ...customManifest.program,
+    sbfElfSha256: "0".repeat(64),
+  },
+  deploymentVerification: {
+    ...customManifest.deploymentVerification,
+    programDataSha256: "0".repeat(64),
+  },
+};
+const badHashClient = new AgentVaultClient({
+  connection: verifiedConnection,
+  releaseManifest: badHashManifest,
+  signer: holderSigner,
+});
+const badHashVerification = await badHashClient.wallets.verifyDeployment();
+assert.equal(badHashVerification.ok, false);
+assert.match(badHashVerification.issues.join("\n"), /program data sha256 mismatch/);
+
+function accountInfo(data: Buffer, owner: PublicKey, executable: boolean) {
+  return {
+    data,
+    owner,
+    executable,
+    lamports: 1,
+    rentEpoch: 0,
+  };
+}
+
+function programStateData(programData: PublicKey): Buffer {
+  const data = Buffer.alloc(36);
+  data.writeUInt32LE(2, 0);
+  programData.toBuffer().copy(data, 4);
+  return data;
+}
+
+function programDataStateData(elf: Buffer, upgradeAuthority: PublicKey | null): Buffer {
+  const data = Buffer.alloc(45 + elf.length);
+  data.writeUInt32LE(3, 0);
+  data.writeBigUInt64LE(1n, 4);
+  if (upgradeAuthority) {
+    data[12] = 1;
+    upgradeAuthority.toBuffer().copy(data, 13);
+  }
+  elf.copy(data, 45);
+  return data;
+}
+
+function globalConfigData(manifest: AgentVaultReleaseManifest): Buffer {
+  const data = Buffer.alloc(GLOBAL_CONFIG_LENGTH);
+  DISCRIMINATOR_GLOBAL_CONFIG.copy(data, 0);
+  data[8] = 0;
+  data[9] = manifest.program.globalConfigBump;
+  new PublicKey(manifest.expectedGlobalConfig.initializer).toBuffer().copy(data, 10);
+  new PublicKey(manifest.expectedGlobalConfig.registryProgram).toBuffer().copy(data, 42);
+  new PublicKey(manifest.expectedGlobalConfig.collection).toBuffer().copy(data, 74);
+  new PublicKey(manifest.expectedGlobalConfig.feeTreasury).toBuffer().copy(data, 106);
+  data.writeBigUInt64LE(BigInt(manifest.expectedGlobalConfig.vaultActivationFeeLamports), 138);
+  return data;
+}

@@ -37,6 +37,12 @@ export interface AgentVaultReleaseManifest {
     sbfElfSha256: string;
     sbfElfSizeBytes: number;
   };
+  deploymentVerification?: {
+    programDataAddress?: string;
+    programDataSha256?: string;
+    upgradeAuthority?: string | null;
+    upgradePolicy?: string;
+  };
   expectedGlobalConfig: {
     initializer: string;
     registryProgram: string;

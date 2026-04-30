@@ -1,6 +1,13 @@
 import { PublicKey, SystemProgram, TransactionInstruction, type AccountInfo, type Connection } from "@solana/web3.js";
 import { compareGlobalConfigToManifest, parseGlobalConfig, parseVaultConfig, parseWallet } from "./accounts.js";
-import { DEVNET_RELEASE_MANIFEST, NATIVE_MINT_ID, SPL_TOKEN_SYNC_NATIVE_TAG, TOKEN_PROGRAM_ID, WALLET_LENGTH } from "./constants.js";
+import {
+  BPF_LOADER_UPGRADEABLE_PROGRAM_ID,
+  DEVNET_RELEASE_MANIFEST,
+  NATIVE_MINT_ID,
+  SPL_TOKEN_SYNC_NATIVE_TAG,
+  TOKEN_PROGRAM_ID,
+  WALLET_LENGTH,
+} from "./constants.js";
 import { AgentVaultInstructions } from "./instructions.js";
 import { executeTransaction } from "./transactions.js";
 import { toPublicKey } from "./codec.js";
@@ -31,6 +38,9 @@ import type {
 
 const DEFAULT_LIST_LIMIT = 100;
 const DEFAULT_CHUNK_SIZE = 100;
+const UPGRADEABLE_LOADER_PROGRAM_TAG = 2;
+const UPGRADEABLE_LOADER_PROGRAMDATA_TAG = 3;
+const PROGRAMDATA_METADATA_LENGTH = 45;
 
 export class AgentVaultWalletsClient {
   readonly instructions: AgentVaultInstructions;
@@ -261,7 +271,7 @@ export class AgentVaultWalletsClient {
     );
   }
 
-  async verifyDeployment(manifest: AgentVaultReleaseManifest = DEVNET_RELEASE_MANIFEST): Promise<DeploymentVerification> {
+  async verifyDeployment(manifest: AgentVaultReleaseManifest = this.instructions.releaseManifest): Promise<DeploymentVerification> {
     const expectedProgramId = new PublicKey(manifest.program.id);
     if (!expectedProgramId.equals(this.instructions.programId)) {
       return {
@@ -286,6 +296,7 @@ export class AgentVaultWalletsClient {
     if (manifest.deploymentStatus !== "deployed") {
       deploymentIssues.push(`manifest deployment status is ${manifest.deploymentStatus}`);
     }
+    deploymentIssues.push(...(await this.verifyProgramData(programInfo, manifest)));
 
     const globalConfig = this.pdas.globalConfig()[0];
     const info = await this.connection.getAccountInfo(globalConfig);
@@ -303,6 +314,73 @@ export class AgentVaultWalletsClient {
       status: issues.length === 0 ? "verified" : "mismatch",
       issues,
     };
+  }
+
+  private async verifyProgramData(
+    programInfo: AccountInfo<Buffer>,
+    manifest: AgentVaultReleaseManifest,
+  ): Promise<string[]> {
+    const issues: string[] = [];
+    if (!programInfo.owner.equals(BPF_LOADER_UPGRADEABLE_PROGRAM_ID)) {
+      return [`program account is not owned by the BPF upgradeable loader`];
+    }
+    const programData = Buffer.from(programInfo.data);
+    if (programData.length < 36) {
+      return [`program account data is too short for upgradeable loader state`];
+    }
+    if (programData.readUInt32LE(0) !== UPGRADEABLE_LOADER_PROGRAM_TAG) {
+      return [`program account is not an upgradeable Program state`];
+    }
+
+    const programDataAddress = new PublicKey(programData.subarray(4, 36));
+    const expectedProgramDataAddress = manifest.deploymentVerification?.programDataAddress;
+    if (expectedProgramDataAddress !== undefined && programDataAddress.toBase58() !== expectedProgramDataAddress) {
+      issues.push(`program data address mismatch: expected ${expectedProgramDataAddress}, got ${programDataAddress.toBase58()}`);
+    }
+
+    const programDataInfo = await this.connection.getAccountInfo(programDataAddress);
+    if (!programDataInfo) {
+      issues.push(`program data account missing at ${programDataAddress.toBase58()}`);
+      return issues;
+    }
+    if (!programDataInfo.owner.equals(BPF_LOADER_UPGRADEABLE_PROGRAM_ID)) {
+      issues.push(`program data account is not owned by the BPF upgradeable loader`);
+    }
+
+    const data = Buffer.from(programDataInfo.data);
+    if (data.length < PROGRAMDATA_METADATA_LENGTH) {
+      issues.push(`program data account is too short for upgradeable loader metadata`);
+      return issues;
+    }
+    if (data.readUInt32LE(0) !== UPGRADEABLE_LOADER_PROGRAMDATA_TAG) {
+      issues.push(`program data account is not an upgradeable ProgramData state`);
+      return issues;
+    }
+
+    const elfBytes = data.subarray(PROGRAMDATA_METADATA_LENGTH);
+    if (elfBytes.length !== manifest.program.sbfElfSizeBytes) {
+      issues.push(`program data size mismatch: expected ${manifest.program.sbfElfSizeBytes}, got ${elfBytes.length}`);
+    }
+    const actualHash = await sha256Hex(elfBytes);
+    const expectedHash = manifest.deploymentVerification?.programDataSha256 ?? manifest.program.sbfElfSha256;
+    if (actualHash !== expectedHash) {
+      issues.push(`program data sha256 mismatch: expected ${expectedHash}, got ${actualHash}`);
+    }
+
+    const expectedUpgradeAuthority = manifest.deploymentVerification?.upgradeAuthority;
+    if (expectedUpgradeAuthority !== undefined) {
+      const upgradeAuthority = readProgramDataUpgradeAuthority(data);
+      if (upgradeAuthority === undefined) {
+        issues.push(`program data upgrade authority option is invalid`);
+        return issues;
+      }
+      const actual = upgradeAuthority?.toBase58() ?? null;
+      if (actual !== expectedUpgradeAuthority) {
+        issues.push(`upgrade authority mismatch: expected ${expectedUpgradeAuthority}, got ${actual ?? "none"}`);
+      }
+    }
+
+    return issues;
   }
 
   private async buildSetupInstructions(
@@ -446,6 +524,26 @@ export class AgentVaultWalletsClient {
       rawAccount: info,
     };
   }
+}
+
+async function sha256Hex(data: Uint8Array): Promise<string> {
+  if (globalThis.crypto?.subtle) {
+    const digest = await globalThis.crypto.subtle.digest("SHA-256", Uint8Array.from(data));
+    return Buffer.from(digest).toString("hex");
+  }
+  const { createHash } = await import("node:crypto");
+  return createHash("sha256").update(data).digest("hex");
+}
+
+function readProgramDataUpgradeAuthority(data: Buffer): PublicKey | null | undefined {
+  const option = data[12];
+  if (option === 0) {
+    return null;
+  }
+  if (option !== 1 || data.length < PROGRAMDATA_METADATA_LENGTH) {
+    return undefined;
+  }
+  return new PublicKey(data.subarray(13, 45));
 }
 
 function applyTransactionOptions(target: BuildTransactionOptions, options: WalletActionOptions): void {
