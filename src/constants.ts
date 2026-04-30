@@ -62,6 +62,12 @@ export const DEVNET_RELEASE_MANIFEST = {
     sbfElfSha256: "f91e7d5a435dfb741ad2bd04c3c0aa35c344199dde139299459b24f96cc0357b",
     sbfElfSizeBytes: 148120,
   },
+  deploymentVerification: {
+    programDataAddress: "CQ71N7pQrmH6pGwZtcC9ibXGSA3otJEVvpmpdmtQ5Gsw",
+    programDataSha256: "f91e7d5a435dfb741ad2bd04c3c0aa35c344199dde139299459b24f96cc0357b",
+    upgradeAuthority: "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    upgradePolicy: "devnet-upgradeable",
+  },
   expectedGlobalConfig: {
     initializer: "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
     registryProgram: "8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C",

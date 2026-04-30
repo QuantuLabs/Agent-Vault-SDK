@@ -47,6 +47,19 @@ Write methods fail closed if the bundled release manifest is not marked
 `deployed`. Use `allowUnverifiedDeployment` only for explicit local/devnet
 testing against a deployment you control.
 
+Deployment verification is explicit and cheap to run before writes:
+
+```ts
+const verification = await vault.wallets.verifyDeployment();
+if (!verification.ok) {
+  throw new Error(verification.issues.join("\n"));
+}
+```
+
+The devnet manifest checks the program account, ProgramData account, deployed
+ELF hash, global config PDA, global config bump, and expected global config
+fields.
+
 To return a transaction for external signing instead:
 
 ```ts
@@ -221,3 +234,6 @@ npm run pack:dry-run
 `npm run e2e:devnet` performs live devnet deployment preflight before any
 write. Set `AGENT_VAULT_E2E_SEND=1` only when the Agent Vault program and global
 config are deployed and the signer is funded.
+
+Mainnet writes are intentionally blocked until a canonical mainnet manifest and
+upgrade policy are published.

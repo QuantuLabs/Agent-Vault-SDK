@@ -86,6 +86,9 @@ export class AgentVaultWalletsClient {
     if (!info) {
       return null;
     }
+    if (!info.owner.equals(this.instructions.programId)) {
+      throw new Error(`vault config owner mismatch at ${address.toBase58()}`);
+    }
     return parseVaultConfig(address, Buffer.from(info.data));
   }
 
@@ -299,6 +302,9 @@ export class AgentVaultWalletsClient {
     deploymentIssues.push(...(await this.verifyProgramData(programInfo, manifest)));
 
     const globalConfig = this.pdas.globalConfig()[0];
+    if (globalConfig.toBase58() !== manifest.program.globalConfigPda) {
+      deploymentIssues.push(`global config PDA mismatch: expected ${manifest.program.globalConfigPda}, got ${globalConfig.toBase58()}`);
+    }
     const info = await this.connection.getAccountInfo(globalConfig);
     if (!info) {
       return {
@@ -307,7 +313,13 @@ export class AgentVaultWalletsClient {
         issues: [`global config missing at ${globalConfig.toBase58()}`],
       };
     }
+    if (!info.owner.equals(this.instructions.programId)) {
+      deploymentIssues.push(`global config owner mismatch: expected ${this.instructions.programId.toBase58()}, got ${info.owner.toBase58()}`);
+    }
     const parsed = parseGlobalConfig(Buffer.from(info.data));
+    if (parsed.bump !== manifest.program.globalConfigBump) {
+      deploymentIssues.push(`global config bump mismatch: expected ${manifest.program.globalConfigBump}, got ${parsed.bump}`);
+    }
     const issues = [...deploymentIssues, ...compareGlobalConfigToManifest(parsed, manifest)];
     return {
       ok: issues.length === 0,
@@ -491,6 +503,19 @@ export class AgentVaultWalletsClient {
       try {
         wallet = parseWallet(Buffer.from(info.data));
       } catch {
+        return {
+          agentAsset,
+          index,
+          address,
+          exists: false,
+          dataStatus: "invalid",
+          label: null,
+          lamports: info.lamports,
+          account: null,
+          rawAccount: info,
+        };
+      }
+      if (wallet.index !== index) {
         return {
           agentAsset,
           index,

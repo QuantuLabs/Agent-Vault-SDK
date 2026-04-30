@@ -94,6 +94,11 @@ Writes fail closed when the bundled manifest is not marked `deployed`, and
 mainnet writes remain blocked by default. `allowUnverifiedDeployment` is only an
 explicit local/devnet escape hatch for testing deployments under direct control.
 
+`client.wallets.verifyDeployment()` verifies the configured release manifest
+against the live cluster. The devnet manifest includes ProgramData address,
+ProgramData SHA-256, upgrade authority, program hash/size, global config PDA,
+global config bump, and expected global config fields.
+
 ## Identity Creation
 
 Identity creation is delegated to `8004-solana`:

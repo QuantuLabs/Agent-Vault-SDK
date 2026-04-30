@@ -95,6 +95,23 @@ const strictClient = new AgentVaultClient({
     deploymentStatus: "candidate-not-deployed",
   },
 });
+const mismatchedWalletConnection = {
+  ...connection,
+  getAccountInfo: async (address: PublicKey) => {
+    if (address.equals(wallet0)) {
+      return accountInfo(walletData, AGENT_VAULT_PROGRAM_ID, false);
+    }
+    return null;
+  },
+} as unknown as Connection;
+const mismatchedWalletClient = AgentVaultClient.devnet({
+  connection: mismatchedWalletConnection,
+  allowUnverifiedDeployment: true,
+});
+const invalidWalletRecord = await mismatchedWalletClient.wallets.get(agentAsset, 0);
+assert.equal(invalidWalletRecord.exists, false);
+assert.equal(invalidWalletRecord.dataStatus, "invalid");
+
 const setupPreview = await client.wallets.setup(agentAsset, holder, {
   labels: ["trading", "treasury"],
   send: false,
@@ -296,6 +313,36 @@ const verifiedClient = new AgentVaultClient({
 const verification = await verifiedClient.wallets.verifyDeployment();
 assert.equal(verification.ok, true);
 assert.equal(verification.status, "verified");
+
+const badGlobalPdaClient = new AgentVaultClient({
+  connection: verifiedConnection,
+  releaseManifest: {
+    ...customManifest,
+    program: {
+      ...customManifest.program,
+      globalConfigPda: wallet0.toBase58(),
+    },
+  },
+  signer: holderSigner,
+});
+const badGlobalPdaVerification = await badGlobalPdaClient.wallets.verifyDeployment();
+assert.equal(badGlobalPdaVerification.ok, false);
+assert.match(badGlobalPdaVerification.issues.join("\n"), /global config PDA mismatch/);
+
+const badGlobalBumpClient = new AgentVaultClient({
+  connection: verifiedConnection,
+  releaseManifest: {
+    ...customManifest,
+    program: {
+      ...customManifest.program,
+      globalConfigBump: 1,
+    },
+  },
+  signer: holderSigner,
+});
+const badGlobalBumpVerification = await badGlobalBumpClient.wallets.verifyDeployment();
+assert.equal(badGlobalBumpVerification.ok, false);
+assert.match(badGlobalBumpVerification.issues.join("\n"), /global config bump mismatch/);
 
 const badHashManifest = {
   ...customManifest,
