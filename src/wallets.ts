@@ -100,7 +100,12 @@ export class AgentVaultWalletsClient {
       }
       throw new Error(`vault config owner mismatch at ${address.toBase58()}`);
     }
-    return parseVaultConfig(address, Buffer.from(info.data));
+    const vault = parseVaultConfig(address, Buffer.from(info.data));
+    const expectedBump = this.pdas.vaultConfig(agentAsset)[1];
+    if (vault.bump !== expectedBump) {
+      throw new Error(`vault config bump mismatch at ${address.toBase58()}: expected ${expectedBump}, got ${vault.bump}`);
+    }
+    return vault;
   }
 
   async get(agentAsset: PublicKeyish, index: number): Promise<WalletRecord> {
@@ -326,17 +331,19 @@ export class AgentVaultWalletsClient {
     }
     const info = await this.connection.getAccountInfo(globalConfig);
     if (!info) {
+      const status = deploymentIssues.length === 0 ? "missing" : "mismatch";
       return {
         ok: false,
-        status: "missing",
-        issues: [`global config missing at ${globalConfig.toBase58()}`],
+        status,
+        issues: [...deploymentIssues, `global config missing at ${globalConfig.toBase58()}`],
       };
     }
     if (info.owner.equals(SystemProgram.programId) && info.data.length === 0) {
+      const status = deploymentIssues.length === 0 ? "missing" : "mismatch";
       return {
         ok: false,
-        status: "missing",
-        issues: [`global config uninitialized at ${globalConfig.toBase58()}`],
+        status,
+        issues: [...deploymentIssues, `global config uninitialized at ${globalConfig.toBase58()}`],
       };
     }
     if (!info.owner.equals(this.instructions.programId)) {
@@ -558,7 +565,8 @@ export class AgentVaultWalletsClient {
           rawAccount: info,
         };
       }
-      if (wallet.index !== index) {
+      const expectedBump = this.pdas.wallet(agentAsset, index)[1];
+      if (wallet.index !== index || wallet.bump !== expectedBump) {
         return {
           agentAsset,
           index,

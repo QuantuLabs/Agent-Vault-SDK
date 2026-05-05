@@ -33,8 +33,8 @@ const DEVNET_TEST_GENESIS_HASH = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
 const MAINNET_BETA_GENESIS_HASH = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
 
 const pdas = new AgentVaultPdas(AGENT_VAULT_PROGRAM_ID, registryProgram);
-const [vaultConfig] = pdas.vaultConfig(agentAsset);
-const [wallet0] = pdas.wallet(agentAsset, 0);
+const [vaultConfig, vaultConfigBump] = pdas.vaultConfig(agentAsset);
+const [wallet0, wallet0Bump] = pdas.wallet(agentAsset, 0);
 const [wallet1] = pdas.wallet(agentAsset, 1);
 const [agentAccount] = pdas.agentAccount(agentAsset);
 
@@ -65,7 +65,7 @@ for (const expectedCostLabel of [
 const walletData = Buffer.alloc(WALLET_LENGTH);
 DISCRIMINATOR_WALLET.copy(walletData, 0);
 walletData[8] = 0;
-walletData[9] = 254;
+walletData[9] = wallet0Bump;
 walletData.writeUInt16LE(7, 10);
 walletData.writeUInt16LE(1, 12);
 encodeLabel("strict").copy(walletData, 14);
@@ -130,6 +130,26 @@ const invalidWalletRecord = await mismatchedWalletClient.wallets.get(agentAsset,
 assert.equal(invalidWalletRecord.exists, false);
 assert.equal(invalidWalletRecord.dataStatus, "invalid");
 
+const bumpMismatchWalletData = Buffer.from(walletData);
+bumpMismatchWalletData[9] = (wallet0Bump + 1) & 0xff;
+bumpMismatchWalletData.writeUInt16LE(0, 10);
+const bumpMismatchWalletConnection = {
+  ...connection,
+  getAccountInfo: async (address: PublicKey) => {
+    if (address.equals(wallet0)) {
+      return accountInfo(bumpMismatchWalletData, AGENT_VAULT_PROGRAM_ID, false);
+    }
+    return null;
+  },
+} as unknown as Connection;
+const bumpMismatchWalletClient = AgentVaultClient.devnet({
+  connection: bumpMismatchWalletConnection,
+  allowUnverifiedDeployment: true,
+});
+const bumpMismatchWalletRecord = await bumpMismatchWalletClient.wallets.get(agentAsset, 0);
+assert.equal(bumpMismatchWalletRecord.exists, false);
+assert.equal(bumpMismatchWalletRecord.dataStatus, "invalid");
+
 const invalidListedConnection = {
   ...connection,
   getAccountInfo: async (address: PublicKey) => {
@@ -148,6 +168,21 @@ const invalidListedClient = AgentVaultClient.devnet({
 const invalidListedRecords = await invalidListedClient.wallets.list(agentAsset);
 assert.equal(invalidListedRecords.length, 1);
 assert.equal(invalidListedRecords[0]?.dataStatus, "invalid");
+
+const bumpMismatchVaultConnection = {
+  ...connection,
+  getAccountInfo: async (address: PublicKey) => {
+    if (address.equals(vaultConfig)) {
+      return accountInfo(vaultConfigData(1, (vaultConfigBump + 1) & 0xff), AGENT_VAULT_PROGRAM_ID, false);
+    }
+    return null;
+  },
+} as unknown as Connection;
+const bumpMismatchVaultClient = AgentVaultClient.devnet({
+  connection: bumpMismatchVaultConnection,
+  allowUnverifiedDeployment: true,
+});
+await assert.rejects(() => bumpMismatchVaultClient.wallets.getVault(agentAsset), /vault config bump mismatch/);
 
 let overviewAccountInfoCalls = 0;
 let overviewMultipleAccountInfoCalls = 0;
@@ -612,6 +647,29 @@ assert.equal(uninitializedGlobalConfigVerification.ok, false);
 assert.equal(uninitializedGlobalConfigVerification.status, "missing");
 assert.match(uninitializedGlobalConfigVerification.issues.join("\n"), /global config uninitialized/);
 
+liveElfBytes = Buffer.from(elfBytes);
+liveElfBytes[0] = (liveElfBytes[0] ?? 0) ^ 1;
+const badProgramDataUninitializedGlobalConfigClient = new AgentVaultClient({
+  connection: {
+    ...verifiedConnection,
+    getAccountInfo: async (address: PublicKey) => {
+      if (address.equals(globalConfigAddress)) {
+        return accountInfo(Buffer.alloc(0), SystemProgram.programId, false);
+      }
+      return verifiedConnection.getAccountInfo(address);
+    },
+  } as unknown as Connection,
+  releaseManifest: customManifest,
+  signer: holderSigner,
+});
+const badProgramDataUninitializedGlobalConfigVerification =
+  await badProgramDataUninitializedGlobalConfigClient.wallets.verifyDeployment();
+assert.equal(badProgramDataUninitializedGlobalConfigVerification.ok, false);
+assert.equal(badProgramDataUninitializedGlobalConfigVerification.status, "mismatch");
+assert.match(badProgramDataUninitializedGlobalConfigVerification.issues.join("\n"), /program data sha256 mismatch/);
+assert.match(badProgramDataUninitializedGlobalConfigVerification.issues.join("\n"), /global config uninitialized/);
+liveElfBytes = Buffer.from(elfBytes);
+
 const malformedGlobalConfigClient = new AgentVaultClient({
   connection: {
     ...verifiedConnection,
@@ -659,11 +717,11 @@ function programDataStateData(elf: Buffer, upgradeAuthority: PublicKey | null): 
   return data;
 }
 
-function vaultConfigData(walletCount: number): Buffer {
+function vaultConfigData(walletCount: number, bump = vaultConfigBump): Buffer {
   const data = Buffer.alloc(VAULT_CONFIG_LENGTH);
   DISCRIMINATOR_VAULT_CONFIG.copy(data, 0);
   data[8] = 0;
-  data[9] = 254;
+  data[9] = bump;
   data.writeUInt16LE(walletCount, 10);
   data.writeUInt16LE(0, 12);
   data.writeBigInt64LE(1n, 14);
