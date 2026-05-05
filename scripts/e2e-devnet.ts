@@ -59,7 +59,6 @@ const EXPECTED_COVERAGE = new Map<number, string>([
 
 async function main(): Promise<void> {
   const rpcUrl = process.env.SOLANA_RPC_URL ?? DEFAULT_RPC_URL;
-  const keypairPath = expandPath(process.env.AGENT_VAULT_E2E_KEYPAIR ?? "~/.config/solana/id.json");
   const send = process.env.AGENT_VAULT_E2E_SEND === "1";
   const allowUnverifiedDeployment = process.env.AGENT_VAULT_ALLOW_UNVERIFIED === "1";
   const initGlobal = process.env.AGENT_VAULT_INIT_GLOBAL === "1";
@@ -67,33 +66,14 @@ async function main(): Promise<void> {
   const coverage = new Set<number>();
   const verifiedCoverage = new Set<number>();
 
-  const signer = loadKeypair(keypairPath);
   const connection = new Connection(rpcUrl, "confirmed");
-  const costs = await CostTracker.create(connection, signer.publicKey, solUsdPrice);
-  const identity = new SolanaSDK({
-    cluster: "devnet",
-    rpcUrl,
-    signer,
-  });
-  const vault = AgentVaultClient.devnet({
+  const readOnlyVault = AgentVaultClient.devnet({
     connection,
-    identity,
-    signer,
     allowUnverifiedDeployment,
   });
 
   console.log(`rpc: ${rpcUrl}`);
-  console.log(`signer: ${signer.publicKey.toBase58()}`);
   console.log(`mode: ${send ? "send" : "preflight-only"}`);
-
-  const balance = await connection.getBalance(signer.publicKey);
-  console.log(`balance: ${balance / LAMPORTS_PER_SOL} SOL`);
-  if (send && balance < MIN_BALANCE_LAMPORTS) {
-    throw new Error(`devnet signer needs at least ${MIN_BALANCE_LAMPORTS / LAMPORTS_PER_SOL} SOL for e2e writes`);
-  }
-  if (!send && balance < MIN_BALANCE_LAMPORTS) {
-    console.log(`balance warning: send mode needs at least ${MIN_BALANCE_LAMPORTS / LAMPORTS_PER_SOL} SOL`);
-  }
 
   await requireAccount(
     connection,
@@ -118,8 +98,38 @@ async function main(): Promise<void> {
     throw new Error(`Agent Vault account is not executable at ${AGENT_VAULT_PROGRAM_ID.toBase58()}`);
   }
 
-  let verification = await vault.wallets.verifyDeployment();
-  if (!verification.ok && initGlobal && send) {
+  let verification = await readOnlyVault.wallets.verifyDeployment();
+  if (!verification.ok && !send) {
+    throw new Error(`Agent Vault deployment verification failed: ${verification.issues.join("; ")}`);
+  }
+  if (!send) {
+    console.log("preflight passed; set AGENT_VAULT_E2E_SEND=1 to run the onchain write flow");
+    return;
+  }
+
+  const keypairPath = expandPath(process.env.AGENT_VAULT_E2E_KEYPAIR ?? "~/.config/solana/id.json");
+  const signer = loadKeypair(keypairPath);
+  const costs = await CostTracker.create(connection, signer.publicKey, solUsdPrice);
+  const identity = new SolanaSDK({
+    cluster: "devnet",
+    rpcUrl,
+    signer,
+  });
+  const vault = AgentVaultClient.devnet({
+    connection,
+    identity,
+    signer,
+    allowUnverifiedDeployment,
+  });
+
+  console.log(`signer: ${signer.publicKey.toBase58()}`);
+  const balance = await connection.getBalance(signer.publicKey);
+  console.log(`balance: ${balance / LAMPORTS_PER_SOL} SOL`);
+  if (balance < MIN_BALANCE_LAMPORTS) {
+    throw new Error(`devnet signer needs at least ${MIN_BALANCE_LAMPORTS / LAMPORTS_PER_SOL} SOL for e2e writes`);
+  }
+
+  if (!verification.ok && initGlobal) {
     await initializeGlobalConfig(connection, vault, signer, coverage, costs);
     verification = await vault.wallets.verifyDeployment();
   }
@@ -127,11 +137,6 @@ async function main(): Promise<void> {
     throw new Error(`Agent Vault deployment verification failed: ${verification.issues.join("; ")}`);
   }
   verifiedCoverage.add(AGENT_VAULT_TAGS.initializeGlobalConfig);
-
-  if (!send) {
-    console.log("preflight passed; set AGENT_VAULT_E2E_SEND=1 to run the onchain write flow");
-    return;
-  }
 
   const uri = `ipfs://agent-vault-sdk-e2e-${Date.now()}`;
   const identityResult = await costs.measure("8004 identity create", "identity", () =>
