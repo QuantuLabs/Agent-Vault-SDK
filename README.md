@@ -168,11 +168,20 @@ const tokenTransfer = await vault.wallets.send(agentAsset, {
 Manage token accounts and WSOL:
 
 ```ts
+import { NATIVE_MINT_ID } from "agent-vault";
+
 const createAta = await vault.wallets.token(agentAsset, {
   action: "createAta",
   holder,
   wallet: 0,
   mint,
+});
+
+const createWsolAta = await vault.wallets.token(agentAsset, {
+  action: "createAta",
+  holder,
+  wallet: 0,
+  mint: NATIVE_MINT_ID,
 });
 
 const wrap = await vault.wallets.token(agentAsset, {
