@@ -25,6 +25,7 @@
     "test": "tsx tests/pda.test.ts",
     "e2e:devnet": "tsx scripts/e2e-devnet.ts",
     "pack:dry-run": "npm pack --dry-run",
+    "prepare": "npm run build",
     "prepack": "npm run build",
     "check": "npm run build && npm run test"
   },
