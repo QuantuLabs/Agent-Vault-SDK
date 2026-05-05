@@ -38,6 +38,13 @@ import type {
 
 const DEFAULT_LIST_LIMIT = 100;
 const DEFAULT_CHUNK_SIZE = 100;
+
+interface NormalizedListWalletsOptions {
+  startIndex: number;
+  limit: number;
+  chunkSize: number;
+  includeClosed?: boolean;
+}
 const UPGRADEABLE_LOADER_PROGRAM_TAG = 2;
 const UPGRADEABLE_LOADER_PROGRAMDATA_TAG = 3;
 const PROGRAMDATA_METADATA_LENGTH = 45;
@@ -105,18 +112,24 @@ export class AgentVaultWalletsClient {
 
   async list(agentAsset: PublicKeyish, options: ListWalletsOptions = {}): Promise<WalletRecord[]> {
     const asset = toPublicKey(agentAsset);
-    const startIndex = validateNonNegativeInteger(options.startIndex ?? 0, "startIndex");
-    const limit = validateNonNegativeInteger(options.limit ?? DEFAULT_LIST_LIMIT, "limit");
-    const chunkSize = validateChunkSize(options.chunkSize ?? DEFAULT_CHUNK_SIZE);
+    const normalized = normalizeListOptions(options);
     const vault = await this.getVault(asset);
     if (!vault) {
       return [];
     }
-    const endIndex = Math.min(vault.walletCount, startIndex + limit);
+    return this.listFromVault(asset, vault, normalized);
+  }
+
+  private async listFromVault(
+    asset: PublicKey,
+    vault: VaultConfig,
+    options: NormalizedListWalletsOptions,
+  ): Promise<WalletRecord[]> {
+    const endIndex = Math.min(vault.walletCount, options.startIndex + options.limit);
     const records: WalletRecord[] = [];
 
-    for (let cursor = startIndex; cursor < endIndex; cursor += chunkSize) {
-      const chunkEnd = Math.min(endIndex, cursor + chunkSize);
+    for (let cursor = options.startIndex; cursor < endIndex; cursor += options.chunkSize) {
+      const chunkEnd = Math.min(endIndex, cursor + options.chunkSize);
       const addresses: PublicKey[] = [];
       for (let index = cursor; index < chunkEnd; index += 1) {
         addresses.push(this.pdas.wallet(asset, index)[0]);
@@ -139,7 +152,9 @@ export class AgentVaultWalletsClient {
   }
 
   async overview(agentAsset: PublicKeyish, options: ListWalletsOptions = {}): Promise<WalletOverview> {
-    const vault = await this.getVault(agentAsset);
+    const asset = toPublicKey(agentAsset);
+    const normalized = normalizeListOptions(options);
+    const vault = await this.getVault(asset);
     if (!vault) {
       return {
         vault: null,
@@ -149,7 +164,7 @@ export class AgentVaultWalletsClient {
     }
     return {
       vault,
-      wallets: await this.list(agentAsset, options),
+      wallets: await this.listFromVault(asset, vault, normalized),
       nextIndex: vault.walletCount,
     };
   }
@@ -625,6 +640,18 @@ function applyTransactionOptions(target: BuildTransactionOptions, options: Walle
   if (options.sendOptions !== undefined) {
     target.sendOptions = options.sendOptions;
   }
+}
+
+function normalizeListOptions(options: ListWalletsOptions): NormalizedListWalletsOptions {
+  const normalized: NormalizedListWalletsOptions = {
+    startIndex: validateNonNegativeInteger(options.startIndex ?? 0, "startIndex"),
+    limit: validateNonNegativeInteger(options.limit ?? DEFAULT_LIST_LIMIT, "limit"),
+    chunkSize: validateChunkSize(options.chunkSize ?? DEFAULT_CHUNK_SIZE),
+  };
+  if (options.includeClosed !== undefined) {
+    normalized.includeClosed = options.includeClosed;
+  }
+  return normalized;
 }
 
 function syncNativeInstruction(wsolAccount: PublicKey): TransactionInstruction {

@@ -149,6 +149,36 @@ const invalidListedRecords = await invalidListedClient.wallets.list(agentAsset);
 assert.equal(invalidListedRecords.length, 1);
 assert.equal(invalidListedRecords[0]?.dataStatus, "invalid");
 
+let overviewAccountInfoCalls = 0;
+let overviewMultipleAccountInfoCalls = 0;
+const overviewWalletData = Buffer.from(walletData);
+overviewWalletData.writeUInt16LE(0, 10);
+const overviewConnection = {
+  ...connection,
+  getAccountInfo: async (address: PublicKey) => {
+    overviewAccountInfoCalls += 1;
+    if (address.equals(vaultConfig)) {
+      return accountInfo(vaultConfigData(1), AGENT_VAULT_PROGRAM_ID, false);
+    }
+    return null;
+  },
+  getMultipleAccountsInfo: async (addresses: PublicKey[]) => {
+    overviewMultipleAccountInfoCalls += 1;
+    return addresses.map((address) =>
+      address.equals(wallet0) ? accountInfo(overviewWalletData, AGENT_VAULT_PROGRAM_ID, false) : null
+    );
+  },
+} as unknown as Connection;
+const overviewClient = AgentVaultClient.devnet({
+  connection: overviewConnection,
+  allowUnverifiedDeployment: true,
+});
+const overview = await overviewClient.wallets.overview(agentAsset);
+assert.equal(overview.vault?.walletCount, 1);
+assert.equal(overview.wallets.length, 1);
+assert.equal(overviewAccountInfoCalls, 1);
+assert.equal(overviewMultipleAccountInfoCalls, 1);
+
 const setupPreview = await client.wallets.setup(agentAsset, holder, {
   labels: ["trading", "treasury"],
   send: false,
