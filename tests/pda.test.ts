@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { Keypair, PublicKey, type Connection } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram, type Connection } from "@solana/web3.js";
 import {
   AGENT_VAULT_PROGRAM_ID,
   AGENT_VAULT_TAGS,
@@ -163,6 +163,28 @@ assert.equal(setupPreview.instructions.length, 3);
 assert.equal(setupPreview.instructions[0]?.data[0], AGENT_VAULT_TAGS.initVaultConfig);
 assert.equal(setupPreview.instructions[1]?.data[0], AGENT_VAULT_TAGS.createWallet);
 assert.equal(setupPreview.instructions[2]?.data[0], AGENT_VAULT_TAGS.createWallet);
+
+const dustedVaultConnection = {
+  ...connection,
+  getAccountInfo: async (address: PublicKey) => {
+    if (address.equals(vaultConfig)) {
+      return accountInfo(Buffer.alloc(0), SystemProgram.programId, false);
+    }
+    return null;
+  },
+} as unknown as Connection;
+const dustedVaultClient = AgentVaultClient.devnet({
+  connection: dustedVaultConnection,
+  signer: holderSigner,
+  allowUnverifiedDeployment: true,
+});
+const dustedVaultSetup = await dustedVaultClient.wallets.setup(agentAsset, holder, {
+  labels: ["recovered"],
+  send: false,
+  sign: false,
+});
+assert.equal(dustedVaultSetup.vaultExists, false);
+assert.equal(dustedVaultSetup.instructions[0]?.data[0], AGENT_VAULT_TAGS.initVaultConfig);
 
 const setup = await client.wallets.setup(agentAsset, holder, {
   labels: ["treasury"],
@@ -541,6 +563,42 @@ const badGlobalFieldClient = new AgentVaultClient({
 const badGlobalFieldVerification = await badGlobalFieldClient.wallets.verifyDeployment();
 assert.equal(badGlobalFieldVerification.ok, false);
 assert.match(badGlobalFieldVerification.issues.join("\n"), /collection mismatch/);
+
+const uninitializedGlobalConfigClient = new AgentVaultClient({
+  connection: {
+    ...verifiedConnection,
+    getAccountInfo: async (address: PublicKey) => {
+      if (address.equals(globalConfigAddress)) {
+        return accountInfo(Buffer.alloc(0), SystemProgram.programId, false);
+      }
+      return verifiedConnection.getAccountInfo(address);
+    },
+  } as unknown as Connection,
+  releaseManifest: customManifest,
+  signer: holderSigner,
+});
+const uninitializedGlobalConfigVerification = await uninitializedGlobalConfigClient.wallets.verifyDeployment();
+assert.equal(uninitializedGlobalConfigVerification.ok, false);
+assert.equal(uninitializedGlobalConfigVerification.status, "missing");
+assert.match(uninitializedGlobalConfigVerification.issues.join("\n"), /global config uninitialized/);
+
+const malformedGlobalConfigClient = new AgentVaultClient({
+  connection: {
+    ...verifiedConnection,
+    getAccountInfo: async (address: PublicKey) => {
+      if (address.equals(globalConfigAddress)) {
+        return accountInfo(Buffer.alloc(1), AGENT_VAULT_PROGRAM_ID, false);
+      }
+      return verifiedConnection.getAccountInfo(address);
+    },
+  } as unknown as Connection,
+  releaseManifest: customManifest,
+  signer: holderSigner,
+});
+const malformedGlobalConfigVerification = await malformedGlobalConfigClient.wallets.verifyDeployment();
+assert.equal(malformedGlobalConfigVerification.ok, false);
+assert.equal(malformedGlobalConfigVerification.status, "mismatch");
+assert.match(malformedGlobalConfigVerification.issues.join("\n"), /global config parse failed/);
 
 function accountInfo(data: Buffer, owner: PublicKey, executable: boolean) {
   return {

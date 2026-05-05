@@ -88,6 +88,9 @@ export class AgentVaultWalletsClient {
       return null;
     }
     if (!info.owner.equals(this.instructions.programId)) {
+      if (info.owner.equals(SystemProgram.programId) && info.data.length === 0) {
+        return null;
+      }
       throw new Error(`vault config owner mismatch at ${address.toBase58()}`);
     }
     return parseVaultConfig(address, Buffer.from(info.data));
@@ -314,10 +317,27 @@ export class AgentVaultWalletsClient {
         issues: [`global config missing at ${globalConfig.toBase58()}`],
       };
     }
+    if (info.owner.equals(SystemProgram.programId) && info.data.length === 0) {
+      return {
+        ok: false,
+        status: "missing",
+        issues: [`global config uninitialized at ${globalConfig.toBase58()}`],
+      };
+    }
     if (!info.owner.equals(this.instructions.programId)) {
       deploymentIssues.push(`global config owner mismatch: expected ${this.instructions.programId.toBase58()}, got ${info.owner.toBase58()}`);
     }
-    const parsed = parseGlobalConfig(Buffer.from(info.data));
+    let parsed: ReturnType<typeof parseGlobalConfig>;
+    try {
+      parsed = parseGlobalConfig(Buffer.from(info.data));
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      return {
+        ok: false,
+        status: "mismatch",
+        issues: [...deploymentIssues, `global config parse failed: ${reason}`],
+      };
+    }
     if (parsed.bump !== manifest.program.globalConfigBump) {
       deploymentIssues.push(`global config bump mismatch: expected ${manifest.program.globalConfigBump}, got ${parsed.bump}`);
     }
