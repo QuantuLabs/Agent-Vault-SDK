@@ -105,6 +105,28 @@ const connection = {
   }),
 } as unknown as Connection;
 const client = AgentVaultClient.devnet({ connection, signer: holderSigner, allowUnverifiedDeployment: true });
+const failedIdentityClient = AgentVaultClient.devnet({
+  connection,
+  signer: holderSigner,
+  allowUnverifiedDeployment: true,
+  identity: {
+    registerAgent: async () => ({ success: false, error: "registry rejected" }),
+  },
+});
+await assert.rejects(
+  () => failedIdentityClient.identities.create({ assetPubkey: agentAsset }),
+  /8004 identity creation failed: registry rejected/,
+);
+const fallbackIdentityClient = AgentVaultClient.devnet({
+  connection,
+  signer: holderSigner,
+  allowUnverifiedDeployment: true,
+  identity: {
+    registerAgent: async () => ({ success: true }),
+  },
+});
+const fallbackIdentity = await fallbackIdentityClient.identities.create({ assetPubkey: agentAsset });
+assert.equal(fallbackIdentity.agentAsset.toBase58(), agentAsset.toBase58());
 const strictClient = new AgentVaultClient({
   connection,
   signer: holderSigner,

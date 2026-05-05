@@ -38,6 +38,9 @@ export class AgentVaultIdentitiesClient {
 
     const registerAgent = identity.registerAgent as RegisterAgent;
     const result = await registerAgent.call(identity, params.uri, options);
+    if (isFailedRegistration(result)) {
+      throw new Error(`8004 identity creation failed: ${result.error}`);
+    }
     const agentAsset = extractAgentAsset(result, params.assetPubkey);
     return { agentAsset, result };
   }
@@ -63,4 +66,8 @@ function extractAgentAsset(result: unknown, fallback?: PublicKey): PublicKey {
     }
   }
   throw new Error("8004 identity creation did not return an agent asset pubkey");
+}
+
+function isFailedRegistration(result: unknown): result is { success: false; error: unknown } {
+  return Boolean(result && typeof result === "object" && (result as { success?: unknown }).success === false);
 }
