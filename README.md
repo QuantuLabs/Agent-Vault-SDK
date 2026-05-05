@@ -43,9 +43,10 @@ Top-level wallet methods merge common instructions, fetch a fresh blockhash,
 sign with `client.signer`, send the transaction, confirm it, and return the
 signature plus confirmation details.
 
-Write methods fail closed if the bundled release manifest is not marked
-`deployed`. Use `allowUnverifiedDeployment` only for explicit local/devnet
-testing against a deployment you control.
+Signed write methods and signed previews fail closed unless the bundled release
+manifest is marked `deployed` and live deployment verification passes. Use
+`allowUnverifiedDeployment` only for explicit local/devnet testing against a
+deployment you control.
 
 Deployment verification is explicit and cheap to run before writes:
 
@@ -56,9 +57,9 @@ if (!verification.ok) {
 }
 ```
 
-The devnet manifest checks the program account, ProgramData account, deployed
-ELF hash, global config PDA, global config bump, and expected global config
-fields.
+The devnet manifest checks the program account, ProgramData address, ProgramData
+account, deployed ELF hash and size, upgrade authority, global config PDA,
+global config bump, and expected global config fields.
 
 To return a transaction for external signing instead:
 

@@ -62,6 +62,7 @@ export class AgentVaultWalletsClient {
 
   private readonly signer: AgentVaultTransactionSigner | undefined;
   private readonly allowUnverifiedDeployment: boolean;
+  private deploymentVerificationCache: DeploymentVerification | null = null;
 
   get pdas() {
     return this.instructions.pdas;
@@ -161,7 +162,7 @@ export class AgentVaultWalletsClient {
       instructions: setup.instructions,
     };
     applyTransactionOptions(transactionOptions, options);
-    this.assertWriteAllowed(options);
+    await this.assertWriteAllowed(options);
     const prepared = await executeTransaction(this.connection, transactionOptions, this.signer);
 
     return {
@@ -321,11 +322,15 @@ export class AgentVaultWalletsClient {
       deploymentIssues.push(`global config bump mismatch: expected ${manifest.program.globalConfigBump}, got ${parsed.bump}`);
     }
     const issues = [...deploymentIssues, ...compareGlobalConfigToManifest(parsed, manifest)];
-    return {
+    const verification: DeploymentVerification = {
       ok: issues.length === 0,
       status: issues.length === 0 ? "verified" : "mismatch",
       issues,
     };
+    if (manifest === this.instructions.releaseManifest) {
+      this.deploymentVerificationCache = verification;
+    }
+    return verification;
   }
 
   private async verifyProgramData(
@@ -451,7 +456,7 @@ export class AgentVaultWalletsClient {
       instructions,
     };
     applyTransactionOptions(transactionOptions, options);
-    this.assertWriteAllowed(options);
+    await this.assertWriteAllowed(options);
 
     return {
       instruction: instructions[0] as TransactionInstruction,
@@ -460,22 +465,27 @@ export class AgentVaultWalletsClient {
     };
   }
 
-  private assertWriteAllowed(options: WalletActionOptions): void {
-    if (
-      (options.send === false && options.sign === false)
-      || options.allowUnverifiedDeployment
-      || this.allowUnverifiedDeployment
-    ) {
+  private async assertWriteAllowed(options: WalletActionOptions): Promise<void> {
+    if (options.send === false && options.sign === false) {
       return;
     }
     const manifest = this.instructions.releaseManifest;
     if (manifest.cluster === "mainnet") {
-      throw new Error("mainnet writes require verified deployment; pass allowUnverifiedDeployment only for explicit unsafe testing");
+      throw new Error("mainnet writes require canonical deployment verification and cannot use allowUnverifiedDeployment");
+    }
+    if (options.allowUnverifiedDeployment || this.allowUnverifiedDeployment) {
+      return;
     }
     if (manifest.deploymentStatus !== "deployed") {
       throw new Error(
         `Agent Vault ${manifest.cluster} manifest is ${manifest.deploymentStatus}; verify deployment or pass allowUnverifiedDeployment for local/devnet testing`,
       );
+    }
+    const verification = this.deploymentVerificationCache?.ok === true
+      ? this.deploymentVerificationCache
+      : await this.verifyDeployment();
+    if (!verification.ok) {
+      throw new Error(`Agent Vault deployment verification failed: ${verification.issues.join("; ")}`);
     }
   }
 

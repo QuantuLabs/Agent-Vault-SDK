@@ -25,8 +25,11 @@ import {
   AGENT_VAULT_TAGS,
   AgentVaultClient,
   DEVNET_RELEASE_MANIFEST,
+  GLOBAL_CONFIG_LENGTH,
   NATIVE_MINT_ID,
   TOKEN_PROGRAM_ID,
+  VAULT_CONFIG_LENGTH,
+  WALLET_LENGTH,
   executeTransaction,
 } from "../src/index.js";
 
@@ -35,6 +38,7 @@ const MIN_BALANCE_LAMPORTS = 200_000_000;
 const PROGRAM_RENT_LAMPORTS = 1_031_806_080;
 const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 type CostCategory = "agent_vault" | "identity" | "aux";
+const TOKEN_ACCOUNT_LENGTH = 165;
 const EXPECTED_COVERAGE = new Map<number, string>([
   [AGENT_VAULT_TAGS.initializeGlobalConfig, "initialize_global_config"],
   [AGENT_VAULT_TAGS.initVaultConfig, "init_vault_config"],
@@ -64,7 +68,7 @@ async function main(): Promise<void> {
 
   const signer = loadKeypair(keypairPath);
   const connection = new Connection(rpcUrl, "confirmed");
-  const costs = new CostTracker(connection, signer.publicKey, solUsdPrice);
+  const costs = await CostTracker.create(connection, signer.publicKey, solUsdPrice);
   const identity = new SolanaSDK({
     cluster: "devnet",
     rpcUrl,
@@ -141,11 +145,17 @@ async function main(): Promise<void> {
     allowUnverifiedDeployment,
   });
   await simulate(connection, setupPreview.transaction, "wallets.setup");
-  const setup = await costs.measure("agent_vault setup 5 wallets", "agent_vault", () =>
-    vault.wallets.setup(agentAsset, signer.publicKey, {
+  const setup = await costs.measure(
+    "agent_vault setup 5 wallets",
+    "agent_vault",
+    () => vault.wallets.setup(agentAsset, signer.publicKey, {
       labels: ["treasury", "defi", "tokens", "wsol", "close"],
       allowUnverifiedDeployment,
-    })
+    }),
+    {
+      protocolFeeLamports: DEVNET_RELEASE_MANIFEST.expectedGlobalConfig.vaultActivationFeeLamports,
+      rentLamports: costs.rent.vaultConfig + (5 * costs.rent.wallet),
+    },
   );
   coverage.add(AGENT_VAULT_TAGS.initVaultConfig);
   coverage.add(AGENT_VAULT_TAGS.createWallet);
@@ -263,7 +273,7 @@ async function initializeGlobalConfig(
     feePayer: signer.publicKey,
     instructions: [ix],
     signer,
-  }));
+  }), { rentLamports: costs.rent.globalConfig });
   assert.ok(sent.signature, "global config init signature missing");
   coverage.add(AGENT_VAULT_TAGS.initializeGlobalConfig);
   console.log(`global config init: ${sent.signature}`);
@@ -298,13 +308,16 @@ async function runTokenFlow(
     send: false,
   });
   await simulate(connection, createWalletAta.transaction, "wallets.token createAta");
-  const createWalletAtaSent = await costs.measure("create_wallet_ata spl", "agent_vault", () =>
-    vault.wallets.token(agentAsset, {
+  const createWalletAtaSent = await costs.measure(
+    "create_wallet_ata spl",
+    "agent_vault",
+    () => vault.wallets.token(agentAsset, {
       action: "createAta",
       holder: signer.publicKey,
       wallet: 2,
       mint: mint.publicKey,
-    })
+    }),
+    { rentLamports: costs.rent.tokenAccount },
   );
   coverage.add(AGENT_VAULT_TAGS.createWalletAta);
   assert.ok(createWalletAtaSent.signature, "create wallet ATA signature missing");
@@ -358,14 +371,17 @@ async function runTokenFlow(
     send: false,
   });
   await simulate(connection, closeAta.transaction, "wallets.token closeAta");
-  const closeAtaSent = await costs.measure("close_wallet_ata spl", "agent_vault", () =>
-    vault.wallets.token(agentAsset, {
+  const closeAtaSent = await costs.measure(
+    "close_wallet_ata spl",
+    "agent_vault",
+    () => vault.wallets.token(agentAsset, {
       action: "closeAta",
       holder: signer.publicKey,
       wallet: 2,
       mint: mint.publicKey,
       rentReceiver: signer.publicKey,
-    })
+    }),
+    { recoveredRentLamports: costs.rent.tokenAccount },
   );
   coverage.add(AGENT_VAULT_TAGS.closeWalletAta);
   assert.ok(closeAtaSent.signature, "close ATA signature missing");
@@ -404,13 +420,16 @@ async function runWsolFlow(
     send: false,
   });
   await simulate(connection, createWsolAta.transaction, "wallets.token create WSOL ATA");
-  const createWsolAtaSent = await costs.measure("create_wallet_ata wsol", "agent_vault", () =>
-    vault.wallets.token(agentAsset, {
+  const createWsolAtaSent = await costs.measure(
+    "create_wallet_ata wsol",
+    "agent_vault",
+    () => vault.wallets.token(agentAsset, {
       action: "createAta",
       holder: signer.publicKey,
       wallet: 3,
       mint: NATIVE_MINT_ID,
-    })
+    }),
+    { rentLamports: costs.rent.tokenAccount },
   );
   coverage.add(AGENT_VAULT_TAGS.createWalletAta);
   assert.ok(createWsolAtaSent.signature, "create WSOL ATA signature missing");
@@ -502,10 +521,10 @@ async function runCloseRecoveryFlow(
 ): Promise<void> {
   await sendInstructions(connection, signer, coverage, costs, "agent_vault", "close_wallet", [
     vault.wallets.instructions.closeWallet(agentAsset, signer.publicKey, 4, signer.publicKey),
-  ], AGENT_VAULT_TAGS.closeWallet);
+  ], AGENT_VAULT_TAGS.closeWallet, [], { recoveredRentLamports: costs.rent.wallet });
   await sendInstructions(connection, signer, coverage, costs, "agent_vault", "reopen_wallet_for_recovery", [
     vault.wallets.instructions.reopenForRecovery(agentAsset, signer.publicKey, 4, "recovery"),
-  ], AGENT_VAULT_TAGS.reopenWalletForRecovery);
+  ], AGENT_VAULT_TAGS.reopenWalletForRecovery, [], { rentLamports: costs.rent.wallet });
 }
 
 async function sendInstructions(
@@ -518,6 +537,7 @@ async function sendInstructions(
   instructions: TransactionInstruction[],
   coverageTag: number | null,
   signers: Keypair[] = [],
+  costBreakdown: CostBreakdown = {},
 ): Promise<void> {
   const preview = await executeTransaction(connection, {
     feePayer: signer.publicKey,
@@ -532,7 +552,7 @@ async function sendInstructions(
     instructions,
     signer,
     signers,
-  }));
+  }), costBreakdown);
   assert.ok(sent.signature, `${label} signature missing`);
   if (coverageTag !== null) {
     coverage.add(coverageTag);
@@ -540,23 +560,60 @@ async function sendInstructions(
   console.log(`${label}: ${sent.signature}`);
 }
 
+interface CostRentEstimates {
+  globalConfig: number;
+  vaultConfig: number;
+  wallet: number;
+  tokenAccount: number;
+}
+
+interface CostBreakdown {
+  protocolFeeLamports?: number;
+  rentLamports?: number;
+  recoveredRentLamports?: number;
+  externalFeeLamports?: number;
+}
+
 class CostTracker {
   private readonly rows: Array<{
     category: CostCategory;
     label: string;
     signature: string | null;
+    protocolFeeLamports: number;
+    rentLamports: number;
+    recoveredRentLamports: number;
+    externalFeeLamports: number;
     feeLamports: number | null;
     computeUnits: number | null;
     netLamports: number;
   }> = [];
 
+  static async create(
+    connection: Connection,
+    payer: PublicKey,
+    solUsdPrice: number,
+  ): Promise<CostTracker> {
+    return new CostTracker(connection, payer, solUsdPrice, {
+      globalConfig: await connection.getMinimumBalanceForRentExemption(GLOBAL_CONFIG_LENGTH),
+      vaultConfig: await connection.getMinimumBalanceForRentExemption(VAULT_CONFIG_LENGTH),
+      wallet: await connection.getMinimumBalanceForRentExemption(WALLET_LENGTH),
+      tokenAccount: await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_LENGTH),
+    });
+  }
+
   constructor(
     private readonly connection: Connection,
     private readonly payer: PublicKey,
     private readonly solUsdPrice: number,
+    readonly rent: CostRentEstimates,
   ) {}
 
-  async measure<T>(label: string, category: CostCategory, fn: () => Promise<T>): Promise<T> {
+  async measure<T>(
+    label: string,
+    category: CostCategory,
+    fn: () => Promise<T>,
+    breakdown: CostBreakdown = {},
+  ): Promise<T> {
     const before = await this.connection.getBalance(this.payer, "confirmed");
     const result = await fn();
     const signature = extractSignature(result);
@@ -567,6 +624,10 @@ class CostTracker {
       category,
       label,
       signature,
+      protocolFeeLamports: breakdown.protocolFeeLamports ?? 0,
+      rentLamports: breakdown.rentLamports ?? 0,
+      recoveredRentLamports: breakdown.recoveredRentLamports ?? 0,
+      externalFeeLamports: breakdown.externalFeeLamports ?? 0,
       feeLamports: meta?.feeLamports ?? null,
       computeUnits: meta?.computeUnits ?? null,
       netLamports,
@@ -576,11 +637,15 @@ class CostTracker {
 
   print(): void {
     console.log("real devnet cost report:");
-    console.log("category | action | tx fee SOL | CU | signer net SOL | signer net USD | signature");
+    console.log("category | action | protocol fee SOL | rent SOL | recovered rent SOL | external fees SOL | tx fee SOL | CU | signer net SOL | signer net USD | signature");
     for (const row of this.rows) {
       console.log([
         row.category,
         row.label,
+        lamportsToSol(row.protocolFeeLamports),
+        lamportsToSol(row.rentLamports),
+        lamportsToSol(row.recoveredRentLamports),
+        lamportsToSol(row.externalFeeLamports),
         row.feeLamports === null ? "unknown" : lamportsToSol(row.feeLamports),
         row.computeUnits === null ? "unknown" : String(row.computeUnits),
         lamportsToSol(row.netLamports),
@@ -600,6 +665,10 @@ class CostTracker {
 
   private printSubtotal(category: CostCategory): void {
     let feeLamports = 0;
+    let protocolFeeLamports = 0;
+    let rentLamports = 0;
+    let recoveredRentLamports = 0;
+    let externalFeeLamports = 0;
     let netLamports = 0;
     let computeUnits = 0;
     let feeUnknown = false;
@@ -608,6 +677,10 @@ class CostTracker {
       if (row.category !== category) {
         continue;
       }
+      protocolFeeLamports += row.protocolFeeLamports;
+      rentLamports += row.rentLamports;
+      recoveredRentLamports += row.recoveredRentLamports;
+      externalFeeLamports += row.externalFeeLamports;
       netLamports += row.netLamports;
       if (row.feeLamports === null) {
         feeUnknown = true;
@@ -622,6 +695,10 @@ class CostTracker {
     }
     console.log([
       `${category} subtotal`,
+      lamportsToSol(protocolFeeLamports),
+      lamportsToSol(rentLamports),
+      lamportsToSol(recoveredRentLamports),
+      lamportsToSol(externalFeeLamports),
       feeUnknown ? "unknown" : lamportsToSol(feeLamports),
       cuUnknown ? "unknown" : String(computeUnits),
       lamportsToSol(netLamports),

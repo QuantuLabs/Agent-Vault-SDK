@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { Keypair, PublicKey, type Connection } from "@solana/web3.js";
 import {
   AGENT_VAULT_PROGRAM_ID,
@@ -44,6 +45,18 @@ assert.equal(label.subarray(0, 7).toString("utf8"), "trading");
 assert.throws(() => encodeLabel("bad\0label"), /NUL/);
 assert.throws(() => encodeLabel(Uint8Array.of(98, 97, 100, 0, 1)), /nonzero/);
 assert.throws(() => u64Le(Number.MAX_SAFE_INTEGER + 1), /safe integer/);
+
+const devnetE2eSource = readFileSync(new URL("../scripts/e2e-devnet.ts", import.meta.url), "utf8");
+for (const expectedCostLabel of [
+  "protocol fee SOL",
+  "rent SOL",
+  "recovered rent SOL",
+  "external fees SOL",
+  "tx fee SOL",
+  "CU",
+]) {
+  assert.ok(devnetE2eSource.includes(expectedCostLabel), `missing devnet cost label ${expectedCostLabel}`);
+}
 
 const walletData = Buffer.alloc(WALLET_LENGTH);
 DISCRIMINATOR_WALLET.copy(walletData, 0);
@@ -314,6 +327,68 @@ const verification = await verifiedClient.wallets.verifyDeployment();
 assert.equal(verification.ok, true);
 assert.equal(verification.status, "verified");
 
+const verifiedPreview = await verifiedClient.wallets.fund(agentAsset, {
+  wallet: 0,
+  payer: holder,
+  amount: 1n,
+  send: false,
+});
+assert.equal(verifiedPreview.sent, false);
+assert.equal(verifiedPreview.signed, true);
+
+const missingDeploymentClient = new AgentVaultClient({
+  connection,
+  releaseManifest: DEVNET_RELEASE_MANIFEST,
+  signer: holderSigner,
+});
+await assert.rejects(
+  () => missingDeploymentClient.wallets.fund(agentAsset, {
+    wallet: 0,
+    payer: holder,
+    amount: 1n,
+    send: false,
+  }),
+  /deployment verification failed: program missing/,
+);
+
+const unsafeMainnetClient = new AgentVaultClient({
+  connection,
+  releaseManifest: {
+    ...DEVNET_RELEASE_MANIFEST,
+    cluster: "mainnet",
+  },
+  signer: holderSigner,
+  allowUnverifiedDeployment: true,
+});
+await assert.rejects(
+  () => unsafeMainnetClient.wallets.fund(agentAsset, {
+    wallet: 0,
+    payer: holder,
+    amount: 1n,
+    send: false,
+  }),
+  /mainnet writes require canonical deployment verification/,
+);
+const unsafeMainnetUnsignedPreview = await unsafeMainnetClient.wallets.fund(agentAsset, {
+  wallet: 0,
+  payer: holder,
+  amount: 1n,
+  send: false,
+  sign: false,
+});
+assert.equal(unsafeMainnetUnsignedPreview.sent, false);
+assert.equal(unsafeMainnetUnsignedPreview.signed, false);
+
+const badProgramIdClient = new AgentVaultClient({
+  connection: verifiedConnection,
+  programId: wallet0,
+  releaseManifest: customManifest,
+  signer: holderSigner,
+});
+const badProgramIdVerification = await badProgramIdClient.wallets.verifyDeployment();
+assert.equal(badProgramIdVerification.ok, false);
+assert.match(badProgramIdVerification.issues.join("\n"), /program id mismatch/);
+
 const badGlobalPdaClient = new AgentVaultClient({
   connection: verifiedConnection,
   releaseManifest: {
@@ -363,6 +438,51 @@ const badHashClient = new AgentVaultClient({
 const badHashVerification = await badHashClient.wallets.verifyDeployment();
 assert.equal(badHashVerification.ok, false);
 assert.match(badHashVerification.issues.join("\n"), /program data sha256 mismatch/);
+
+const badProgramDataAddressClient = new AgentVaultClient({
+  connection: verifiedConnection,
+  releaseManifest: {
+    ...customManifest,
+    deploymentVerification: {
+      ...customManifest.deploymentVerification,
+      programDataAddress: Keypair.generate().publicKey.toBase58(),
+    },
+  },
+  signer: holderSigner,
+});
+const badProgramDataAddressVerification = await badProgramDataAddressClient.wallets.verifyDeployment();
+assert.equal(badProgramDataAddressVerification.ok, false);
+assert.match(badProgramDataAddressVerification.issues.join("\n"), /program data address mismatch/);
+
+const badUpgradeAuthorityClient = new AgentVaultClient({
+  connection: verifiedConnection,
+  releaseManifest: {
+    ...customManifest,
+    deploymentVerification: {
+      ...customManifest.deploymentVerification,
+      upgradeAuthority: Keypair.generate().publicKey.toBase58(),
+    },
+  },
+  signer: holderSigner,
+});
+const badUpgradeAuthorityVerification = await badUpgradeAuthorityClient.wallets.verifyDeployment();
+assert.equal(badUpgradeAuthorityVerification.ok, false);
+assert.match(badUpgradeAuthorityVerification.issues.join("\n"), /upgrade authority mismatch/);
+
+const badGlobalFieldClient = new AgentVaultClient({
+  connection: verifiedConnection,
+  releaseManifest: {
+    ...customManifest,
+    expectedGlobalConfig: {
+      ...customManifest.expectedGlobalConfig,
+      collection: Keypair.generate().publicKey.toBase58(),
+    },
+  },
+  signer: holderSigner,
+});
+const badGlobalFieldVerification = await badGlobalFieldClient.wallets.verifyDeployment();
+assert.equal(badGlobalFieldVerification.ok, false);
+assert.match(badGlobalFieldVerification.issues.join("\n"), /collection mismatch/);
 
 function accountInfo(data: Buffer, owner: PublicKey, executable: boolean) {
   return {

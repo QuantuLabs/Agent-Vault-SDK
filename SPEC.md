@@ -46,7 +46,7 @@ client.wallets.list(agentAsset, { startIndex, limit, includeClosed })
 client.wallets.fund(agentAsset, { wallet, payer, amount, feePayer, signer, send })
 client.wallets.send(agentAsset, { holder, from, to, amount, mint, decimals, tokenProgram })
 client.wallets.token(agentAsset, { action, holder, wallet, mint, amount, tokenProgram })
-client.wallets.execute(agentAsset, { holder, wallet, targetProgram, targetAccounts, postCheckData })
+client.wallets.execute(agentAsset, { holder, wallet, walletMetaIndex, targetProgram, targetAccounts, targetInstructionData, postCheckCount, postCheckData })
 ```
 
 The write methods are the default DX surface. They sign, send, and confirm by
@@ -90,9 +90,11 @@ schema: "agent-vault.release-manifest.v0"
 name: "Agent Vault"
 ```
 
-Writes fail closed when the bundled manifest is not marked `deployed`, and
-mainnet writes remain blocked by default. `allowUnverifiedDeployment` is only an
-explicit local/devnet escape hatch for testing deployments under direct control.
+Signed writes and signed previews fail closed unless the bundled manifest is
+marked `deployed` and live deployment verification passes. Mainnet writes remain
+blocked until a canonical mainnet manifest and upgrade policy are published.
+`allowUnverifiedDeployment` is only an explicit local/devnet escape hatch for
+testing deployments under direct control.
 
 `client.wallets.verifyDeployment()` verifies the configured release manifest
 against the live cluster. The devnet manifest includes ProgramData address,
