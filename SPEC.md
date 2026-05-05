@@ -2,7 +2,8 @@
 
 ## Package
 
-The npm package name is `agent-vault`.
+The npm package name is `agent-vault`. Until npm publication, consume the WIP
+package from `github:QuantuLabs/Agent-Vault-SDK` or a local checkout.
 
 Description:
 
@@ -91,15 +92,20 @@ name: "Agent Vault"
 ```
 
 Signed writes and signed previews fail closed unless the bundled manifest is
-marked `deployed` and live deployment verification passes. Mainnet writes remain
-blocked until a canonical mainnet manifest and upgrade policy are published.
-`allowUnverifiedDeployment` is only an explicit local/devnet escape hatch for
-testing deployments under direct control.
+marked `deployed`, the RPC genesis hash is not mainnet-beta, and live deployment
+verification passes. Mainnet writes remain blocked until a canonical mainnet
+manifest and upgrade policy are published. `allowUnverifiedDeployment` is only an
+explicit local/devnet escape hatch for testing deployments under direct control.
 
 `client.wallets.verifyDeployment()` verifies the configured release manifest
 against the live cluster. The devnet manifest includes ProgramData address,
-ProgramData SHA-256, upgrade authority, program hash/size, global config PDA,
-global config bump, and expected global config fields.
+ProgramData SHA-256 and allocated size, upgrade authority, local SBF hash/size,
+global config PDA, global config bump, and expected global config fields.
+
+Positive deployment verification is not reused as an authorization cache for
+signed writes. Each signed write or signed preview performs a fresh live
+verification so a post-verification ProgramData or global-config mismatch is
+caught before signing.
 
 ## Identity Creation
 

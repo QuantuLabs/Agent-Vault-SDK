@@ -40,6 +40,7 @@ export interface AgentVaultReleaseManifest {
   deploymentVerification?: {
     programDataAddress?: string;
     programDataSha256?: string;
+    programDataSizeBytes?: number;
     upgradeAuthority?: string | null;
     upgradePolicy?: string;
   };

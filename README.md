@@ -8,7 +8,9 @@ not be used with valuable assets until a mainnet release is published.
 ## Install
 
 ```bash
-npm install agent-vault 8004-solana @solana/web3.js
+npm install github:QuantuLabs/Agent-Vault-SDK 8004-solana @solana/web3.js
+# After npm publication:
+# npm install agent-vault 8004-solana @solana/web3.js
 ```
 
 ## Quickstart
@@ -44,9 +46,9 @@ sign with `client.signer`, send the transaction, confirm it, and return the
 signature plus confirmation details.
 
 Signed write methods and signed previews fail closed unless the bundled release
-manifest is marked `deployed` and live deployment verification passes. Use
-`allowUnverifiedDeployment` only for explicit local/devnet testing against a
-deployment you control.
+manifest is marked `deployed`, the RPC endpoint is not mainnet-beta, and live
+deployment verification passes. Use `allowUnverifiedDeployment` only for explicit
+local/devnet testing against a deployment you control.
 
 Deployment verification is explicit and cheap to run before writes:
 
@@ -234,7 +236,9 @@ npm run pack:dry-run
 
 `npm run e2e:devnet` performs live devnet deployment preflight before any
 write. Set `AGENT_VAULT_E2E_SEND=1` only when the Agent Vault program and global
-config are deployed and the signer is funded.
+config are deployed and the signer is funded. The e2e report prints
+transaction-level CU and cost rows; the program repository's LiteSVM release
+report separates Agent Vault checked-CPI overhead from target-program estimates.
 
 Mainnet writes are intentionally blocked until a canonical mainnet manifest and
 upgrade policy are published.

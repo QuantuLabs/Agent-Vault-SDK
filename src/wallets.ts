@@ -41,6 +41,7 @@ const DEFAULT_CHUNK_SIZE = 100;
 const UPGRADEABLE_LOADER_PROGRAM_TAG = 2;
 const UPGRADEABLE_LOADER_PROGRAMDATA_TAG = 3;
 const PROGRAMDATA_METADATA_LENGTH = 45;
+const MAINNET_BETA_GENESIS_HASH = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
 
 export class AgentVaultWalletsClient {
   readonly instructions: AgentVaultInstructions;
@@ -62,7 +63,6 @@ export class AgentVaultWalletsClient {
 
   private readonly signer: AgentVaultTransactionSigner | undefined;
   private readonly allowUnverifiedDeployment: boolean;
-  private deploymentVerificationCache: DeploymentVerification | null = null;
 
   get pdas() {
     return this.instructions.pdas;
@@ -126,7 +126,7 @@ export class AgentVaultWalletsClient {
           continue;
         }
         const record = this.recordFromAccount(asset, index, address, accounts[offset] ?? null);
-        if (options.includeClosed || record.exists) {
+        if (options.includeClosed || record.exists || record.dataStatus === "invalid") {
           records.push(record);
         }
       }
@@ -327,9 +327,6 @@ export class AgentVaultWalletsClient {
       status: issues.length === 0 ? "verified" : "mismatch",
       issues,
     };
-    if (manifest === this.instructions.releaseManifest) {
-      this.deploymentVerificationCache = verification;
-    }
     return verification;
   }
 
@@ -375,8 +372,10 @@ export class AgentVaultWalletsClient {
     }
 
     const elfBytes = data.subarray(PROGRAMDATA_METADATA_LENGTH);
-    if (elfBytes.length !== manifest.program.sbfElfSizeBytes) {
-      issues.push(`program data size mismatch: expected ${manifest.program.sbfElfSizeBytes}, got ${elfBytes.length}`);
+    const expectedProgramDataSize =
+      manifest.deploymentVerification?.programDataSizeBytes ?? manifest.program.sbfElfSizeBytes;
+    if (elfBytes.length !== expectedProgramDataSize) {
+      issues.push(`program data size mismatch: expected ${expectedProgramDataSize}, got ${elfBytes.length}`);
     }
     const actualHash = await sha256Hex(elfBytes);
     const expectedHash = manifest.deploymentVerification?.programDataSha256 ?? manifest.program.sbfElfSha256;
@@ -470,7 +469,8 @@ export class AgentVaultWalletsClient {
       return;
     }
     const manifest = this.instructions.releaseManifest;
-    if (manifest.cluster === "mainnet") {
+    const genesisHash = await this.connection.getGenesisHash();
+    if (manifest.cluster === "mainnet" || genesisHash === MAINNET_BETA_GENESIS_HASH) {
       throw new Error("mainnet writes require canonical deployment verification and cannot use allowUnverifiedDeployment");
     }
     if (options.allowUnverifiedDeployment || this.allowUnverifiedDeployment) {
@@ -481,9 +481,7 @@ export class AgentVaultWalletsClient {
         `Agent Vault ${manifest.cluster} manifest is ${manifest.deploymentStatus}; verify deployment or pass allowUnverifiedDeployment for local/devnet testing`,
       );
     }
-    const verification = this.deploymentVerificationCache?.ok === true
-      ? this.deploymentVerificationCache
-      : await this.verifyDeployment();
+    const verification = await this.verifyDeployment();
     if (!verification.ok) {
       throw new Error(`Agent Vault deployment verification failed: ${verification.issues.join("; ")}`);
     }

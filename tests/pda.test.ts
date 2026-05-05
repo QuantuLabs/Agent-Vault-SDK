@@ -10,12 +10,14 @@ import {
   AgentVaultPdas,
   BPF_LOADER_UPGRADEABLE_PROGRAM_ID,
   DISCRIMINATOR_GLOBAL_CONFIG,
+  DISCRIMINATOR_VAULT_CONFIG,
   DISCRIMINATOR_WALLET,
   DEVNET_RELEASE_MANIFEST,
   GLOBAL_CONFIG_LENGTH,
   NATIVE_MINT_ID,
   SPL_TOKEN_SYNC_NATIVE_TAG,
   TOKEN_PROGRAM_ID,
+  VAULT_CONFIG_LENGTH,
   WALLET_LENGTH,
   encodeLabel,
   parseWallet,
@@ -27,6 +29,8 @@ const agentAsset = new PublicKey("6CTyGPcn8dMwKEqgtvx2XCpkGUd7uqCVK6937RSM5bhA")
 const holderSigner = Keypair.generate();
 const holder = holderSigner.publicKey;
 const registryProgram = new PublicKey("8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C");
+const DEVNET_TEST_GENESIS_HASH = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
+const MAINNET_BETA_GENESIS_HASH = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
 
 const pdas = new AgentVaultPdas(AGENT_VAULT_PROGRAM_ID, registryProgram);
 const [vaultConfig] = pdas.vaultConfig(agentAsset);
@@ -86,6 +90,7 @@ assert.deepEqual(createWallet.keys.map((key) => key.pubkey.toBase58()), [
 const connection = {
   getAccountInfo: async () => null,
   getMultipleAccountsInfo: async () => [],
+  getGenesisHash: async () => DEVNET_TEST_GENESIS_HASH,
   getLatestBlockhash: async () => ({
     blockhash: "11111111111111111111111111111111",
     lastValidBlockHeight: 123,
@@ -124,6 +129,25 @@ const mismatchedWalletClient = AgentVaultClient.devnet({
 const invalidWalletRecord = await mismatchedWalletClient.wallets.get(agentAsset, 0);
 assert.equal(invalidWalletRecord.exists, false);
 assert.equal(invalidWalletRecord.dataStatus, "invalid");
+
+const invalidListedConnection = {
+  ...connection,
+  getAccountInfo: async (address: PublicKey) => {
+    if (address.equals(vaultConfig)) {
+      return accountInfo(vaultConfigData(1), AGENT_VAULT_PROGRAM_ID, false);
+    }
+    return null;
+  },
+  getMultipleAccountsInfo: async (addresses: PublicKey[]) =>
+    addresses.map((address) => (address.equals(wallet0) ? accountInfo(walletData, AGENT_VAULT_PROGRAM_ID, false) : null)),
+} as unknown as Connection;
+const invalidListedClient = AgentVaultClient.devnet({
+  connection: invalidListedConnection,
+  allowUnverifiedDeployment: true,
+});
+const invalidListedRecords = await invalidListedClient.wallets.list(agentAsset);
+assert.equal(invalidListedRecords.length, 1);
+assert.equal(invalidListedRecords[0]?.dataStatus, "invalid");
 
 const setupPreview = await client.wallets.setup(agentAsset, holder, {
   labels: ["trading", "treasury"],
@@ -284,6 +308,7 @@ await assert.rejects(
 const programDataAddress = Keypair.generate().publicKey;
 const elfBytes = Buffer.from("agent-vault-fixture-elf", "utf8");
 const elfHash = createHash("sha256").update(elfBytes).digest("hex");
+let liveElfBytes = Buffer.from(elfBytes);
 const customManifest = {
   ...DEVNET_RELEASE_MANIFEST,
   program: {
@@ -310,7 +335,7 @@ const verifiedConnection = {
       return accountInfo(programStateData(programDataAddress), BPF_LOADER_UPGRADEABLE_PROGRAM_ID, true);
     }
     if (address.equals(programDataAddress)) {
-      return accountInfo(programDataStateData(elfBytes, holder), BPF_LOADER_UPGRADEABLE_PROGRAM_ID, false);
+      return accountInfo(programDataStateData(liveElfBytes, holder), BPF_LOADER_UPGRADEABLE_PROGRAM_ID, false);
     }
     if (address.equals(globalConfigAddress)) {
       return accountInfo(globalConfigData(customManifest), AGENT_VAULT_PROGRAM_ID, false);
@@ -326,6 +351,7 @@ const verifiedClient = new AgentVaultClient({
 const verification = await verifiedClient.wallets.verifyDeployment();
 assert.equal(verification.ok, true);
 assert.equal(verification.status, "verified");
+liveElfBytes = Buffer.from(elfBytes);
 
 const verifiedPreview = await verifiedClient.wallets.fund(agentAsset, {
   wallet: 0,
@@ -335,6 +361,20 @@ const verifiedPreview = await verifiedClient.wallets.fund(agentAsset, {
 });
 assert.equal(verifiedPreview.sent, false);
 assert.equal(verifiedPreview.signed, true);
+
+await verifiedClient.wallets.verifyDeployment();
+liveElfBytes = Buffer.from(elfBytes);
+liveElfBytes[0] = (liveElfBytes[0] ?? 0) ^ 1;
+await assert.rejects(
+  () => verifiedClient.wallets.fund(agentAsset, {
+    wallet: 0,
+    payer: holder,
+    amount: 1n,
+    send: false,
+  }),
+  /deployment verification failed: program data sha256 mismatch/,
+);
+liveElfBytes = Buffer.from(elfBytes);
 
 const missingDeploymentClient = new AgentVaultClient({
   connection,
@@ -378,6 +418,24 @@ const unsafeMainnetUnsignedPreview = await unsafeMainnetClient.wallets.fund(agen
 });
 assert.equal(unsafeMainnetUnsignedPreview.sent, false);
 assert.equal(unsafeMainnetUnsignedPreview.signed, false);
+
+const realMainnetRpcClient = AgentVaultClient.devnet({
+  connection: {
+    ...connection,
+    getGenesisHash: async () => MAINNET_BETA_GENESIS_HASH,
+  } as unknown as Connection,
+  signer: holderSigner,
+  allowUnverifiedDeployment: true,
+});
+await assert.rejects(
+  () => realMainnetRpcClient.wallets.fund(agentAsset, {
+    wallet: 0,
+    payer: holder,
+    amount: 1n,
+    send: false,
+  }),
+  /mainnet writes require canonical deployment verification/,
+);
 
 const badProgramIdClient = new AgentVaultClient({
   connection: verifiedConnection,
@@ -510,6 +568,17 @@ function programDataStateData(elf: Buffer, upgradeAuthority: PublicKey | null): 
     upgradeAuthority.toBuffer().copy(data, 13);
   }
   elf.copy(data, 45);
+  return data;
+}
+
+function vaultConfigData(walletCount: number): Buffer {
+  const data = Buffer.alloc(VAULT_CONFIG_LENGTH);
+  DISCRIMINATOR_VAULT_CONFIG.copy(data, 0);
+  data[8] = 0;
+  data[9] = 254;
+  data.writeUInt16LE(walletCount, 10);
+  data.writeUInt16LE(0, 12);
+  data.writeBigInt64LE(1n, 14);
   return data;
 }
 

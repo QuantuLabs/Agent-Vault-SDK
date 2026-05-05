@@ -65,6 +65,7 @@ async function main(): Promise<void> {
   const initGlobal = process.env.AGENT_VAULT_INIT_GLOBAL === "1";
   const solUsdPrice = Number(process.env.SOL_USD_PRICE ?? "0");
   const coverage = new Set<number>();
+  const verifiedCoverage = new Set<number>();
 
   const signer = loadKeypair(keypairPath);
   const connection = new Connection(rpcUrl, "confirmed");
@@ -125,7 +126,7 @@ async function main(): Promise<void> {
   if (!verification.ok) {
     throw new Error(`Agent Vault deployment verification failed: ${verification.issues.join("; ")}`);
   }
-  coverage.add(AGENT_VAULT_TAGS.initializeGlobalConfig);
+  verifiedCoverage.add(AGENT_VAULT_TAGS.initializeGlobalConfig);
 
   if (!send) {
     console.log("preflight passed; set AGENT_VAULT_E2E_SEND=1 to run the onchain write flow");
@@ -247,9 +248,9 @@ async function main(): Promise<void> {
   const overview = await vault.wallets.overview(agentAsset, { limit: 10 });
   assert.equal(overview.wallets.length, 5);
   assert.equal(overview.wallets[4]?.dataStatus, "recovery");
-  assertFullCoverage(coverage);
+  assertFullCoverage(coverage, verifiedCoverage);
   costs.print();
-  console.log("devnet e2e completed with 100% Agent Vault instruction coverage via SDK");
+  console.log("devnet e2e completed with Agent Vault instruction coverage via SDK");
 }
 
 async function initializeGlobalConfig(
@@ -637,6 +638,7 @@ class CostTracker {
 
   print(): void {
     console.log("real devnet cost report:");
+    console.log("CU is full transaction CU. execute_cpi_checked rows include target-program CU; LiteSVM release tests print Agent Vault overhead and target estimates separately.");
     console.log("category | action | protocol fee SOL | rent SOL | recovered rent SOL | external fees SOL | tx fee SOL | CU | signer net SOL | signer net USD | signature");
     for (const row of this.rows) {
       console.log([
@@ -758,16 +760,17 @@ function solMinPostCheck(accountIndex: number, minLamports: bigint): Buffer {
   return out;
 }
 
-function assertFullCoverage(coverage: Set<number>): void {
+function assertFullCoverage(coverage: Set<number>, verifiedCoverage: Set<number>): void {
   const missing = [...EXPECTED_COVERAGE.entries()]
-    .filter(([tag]) => !coverage.has(tag))
+    .filter(([tag]) => !coverage.has(tag) && !verifiedCoverage.has(tag))
     .map(([tag, name]) => `${name}(${tag})`);
   if (missing.length > 0) {
     throw new Error(`missing Agent Vault instruction coverage: ${missing.join(", ")}`);
   }
   console.log("covered Agent Vault instructions:");
   for (const [tag, name] of EXPECTED_COVERAGE.entries()) {
-    console.log(`  ${tag}: ${name}`);
+    const status = coverage.has(tag) ? "sent" : "verified";
+    console.log(`  ${tag}: ${name} (${status})`);
   }
 }
 
