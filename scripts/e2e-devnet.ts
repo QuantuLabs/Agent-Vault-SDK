@@ -31,7 +31,7 @@ import {
   VAULT_CONFIG_LENGTH,
   WALLET_LENGTH,
   executeTransaction,
-} from "../src/index.js";
+} from "../dist/index.js";
 
 const DEFAULT_RPC_URL = "https://api.devnet.solana.com";
 const MIN_BALANCE_LAMPORTS = 200_000_000;
