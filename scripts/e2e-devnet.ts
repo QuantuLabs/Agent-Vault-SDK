@@ -91,7 +91,7 @@ async function main(): Promise<void> {
   if (!programInfo) {
     throw new Error(
       `Agent Vault program missing at ${AGENT_VAULT_PROGRAM_ID.toBase58()}. ` +
-      `Deploy target/deploy/agent_vault.so first; current rent estimate is ${PROGRAM_RENT_LAMPORTS / LAMPORTS_PER_SOL} SOL plus buffer.`,
+      `Deploy the Agent Vault program before running SDK e2e writes; current rent estimate is ${PROGRAM_RENT_LAMPORTS / LAMPORTS_PER_SOL} SOL plus buffer.`,
     );
   }
   if (!programInfo.executable) {
@@ -129,7 +129,7 @@ async function main(): Promise<void> {
     throw new Error(`devnet signer needs at least ${MIN_BALANCE_LAMPORTS / LAMPORTS_PER_SOL} SOL for e2e writes`);
   }
 
-  if (!verification.ok && initGlobal) {
+  if (initGlobal && verification.status === "missing") {
     await initializeGlobalConfig(connection, vault, signer, coverage, costs);
     verification = await vault.wallets.verifyDeployment();
   }
