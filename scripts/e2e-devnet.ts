@@ -35,7 +35,6 @@ import {
 
 const DEFAULT_RPC_URL = "https://api.devnet.solana.com";
 const MIN_BALANCE_LAMPORTS = 200_000_000;
-const PROGRAM_RENT_LAMPORTS = 1_031_806_080;
 const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 type CostCategory = "agent_vault" | "identity" | "aux";
 const TOKEN_ACCOUNT_LENGTH = 165;
@@ -91,7 +90,7 @@ async function main(): Promise<void> {
   if (!programInfo) {
     throw new Error(
       `Agent Vault program missing at ${AGENT_VAULT_PROGRAM_ID.toBase58()}. ` +
-      `Deploy the Agent Vault program before running SDK e2e writes; current rent estimate is ${PROGRAM_RENT_LAMPORTS / LAMPORTS_PER_SOL} SOL plus buffer.`,
+      `Deploy the Agent Vault program before running SDK e2e writes.`,
     );
   }
   if (!programInfo.executable) {
