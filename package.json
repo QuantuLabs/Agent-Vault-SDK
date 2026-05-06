@@ -14,7 +14,6 @@
   },
   "files": [
     "dist/**/*",
-    "scripts/e2e-devnet.ts",
     "README.md",
     "SPEC.md",
     "LICENSE",
@@ -22,9 +21,9 @@
   ],
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.scripts.json",
     "test": "tsx tests/pda.test.ts",
-    "e2e:devnet": "tsx scripts/e2e-devnet.ts",
+    "e2e:devnet": "node dist/scripts/e2e-devnet.js",
     "pack:dry-run": "npm pack --dry-run",
     "prepare": "npm run build",
     "prepack": "npm run build",
@@ -57,8 +56,10 @@
     "@solana/web3.js": "^1.95.0",
     "8004-solana": "^0.8.3"
   },
+  "dependencies": {
+    "@solana/spl-token": "^0.4.14"
+  },
   "devDependencies": {
-    "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.95.0",
     "@types/node": "^20.10.6",
     "8004-solana": "^0.8.3",

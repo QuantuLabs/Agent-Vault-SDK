@@ -245,9 +245,13 @@ npm run pack:dry-run
 
 `npm run e2e:devnet` performs live devnet deployment preflight before any
 write. Set `AGENT_VAULT_E2E_SEND=1` only when the Agent Vault program and global
-config are deployed and the signer is funded. The e2e report prints
-transaction-level CU and cost rows; the program repository's LiteSVM release
-report separates Agent Vault checked-CPI overhead from target-program estimates.
+config are deployed and the signer is funded. If the program is deployed but
+the global config is missing, set both `AGENT_VAULT_E2E_SEND=1` and
+`AGENT_VAULT_INIT_GLOBAL=1`; the script only initializes global config when
+deployment verification reports `missing`, not on hash or authority mismatches.
+The e2e report prints transaction-level CU and cost rows; the program
+repository's LiteSVM release report separates Agent Vault checked-CPI overhead
+from target-program estimates.
 
 Mainnet writes are intentionally blocked until a canonical mainnet manifest and
 upgrade policy are published.
