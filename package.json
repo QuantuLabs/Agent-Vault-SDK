@@ -16,6 +16,7 @@
     "dist/**/*",
     "README.md",
     "SPEC.md",
+    "SECURITY.md",
     "LICENSE",
     "package.json"
   ],

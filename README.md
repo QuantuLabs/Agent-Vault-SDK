@@ -255,3 +255,7 @@ from target-program estimates.
 
 Mainnet writes are intentionally blocked until a canonical mainnet manifest and
 upgrade policy are published.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for reporting and release-status guidance.
