@@ -45,7 +45,7 @@ Target API:
 client.wallets.setup(agentAsset, { labels, includeVaultInit, feePayer, signer, send })
 client.wallets.list(agentAsset, { startIndex, limit, includeClosed })
 client.wallets.fund(agentAsset, { wallet, amount, feePayer, signer, send })
-client.wallets.send(agentAsset, { from, to, amount, mint, decimals, tokenProgram })
+client.wallets.send(agentAsset, { from, to, amount, mint, tokenProgram })
 client.wallets.token(agentAsset, { action, wallet, mint, amount, tokenProgram })
 client.wallets.execute(agentAsset, { wallet, targetProgram, targetInstructionData, postCheckData })
 ```
@@ -59,7 +59,9 @@ explicitly when the action authority is not the configured signer. Passing
 and `sign: false` returns a transaction for external signing. `execute`
 defaults `walletMetaIndex` to `0`, `targetAccounts` to `[]`, empty instruction
 data when omitted, and one post-check; callers pass the explicit fields only
-for more complex CPI plans.
+for more complex CPI plans. Token transfers infer mint decimals when omitted,
+and Token-2022 transfers can infer the expected transfer fee from the mint when
+the caller omits `expectedFee`.
 
 Read-only helpers remain available:
 

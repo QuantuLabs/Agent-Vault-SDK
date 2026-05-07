@@ -387,6 +387,31 @@ const tokenTransferPreview = await client.wallets.send(agentAsset, {
 assert.equal(tokenTransferPreview.instruction.data[0], AGENT_VAULT_TAGS.transferSpl);
 assert.equal(tokenTransferPreview.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
 
+const inferredMintClient = AgentVaultClient.devnet({
+  connection: {
+    ...connection,
+    getAccountInfo: async (address: PublicKey) => {
+      if (address.equals(agentAsset)) {
+        return accountInfo(mintData(6), TOKEN_PROGRAM_ID, false);
+      }
+      return null;
+    },
+  } as unknown as Connection,
+  signer: holderSigner,
+  allowUnverifiedDeployment: true,
+});
+const inferredTokenTransferPreview = await inferredMintClient.wallets.send(agentAsset, {
+  from: 0,
+  to: client.wallets.ataAddress(agentAsset, 1, agentAsset),
+  mint: agentAsset,
+  amount: 1n,
+  send: false,
+  sign: false,
+});
+assert.equal(inferredTokenTransferPreview.instruction.data[0], AGENT_VAULT_TAGS.transferSpl);
+assert.equal(inferredTokenTransferPreview.instruction.data[11], 6);
+assert.equal(inferredTokenTransferPreview.instruction.keys[8]?.pubkey.toBase58(), TOKEN_PROGRAM_ID.toBase58());
+
 const createAtaPreview = await client.wallets.token(agentAsset, {
   action: "createAta",
   wallet: 0,
@@ -809,6 +834,16 @@ function programDataStateData(elf: Buffer, upgradeAuthority: PublicKey | null): 
     upgradeAuthority.toBuffer().copy(data, 13);
   }
   elf.copy(data, 45);
+  return data;
+}
+
+function mintData(decimals: number): Buffer {
+  const data = Buffer.alloc(82);
+  data.writeUInt32LE(0, 0);
+  data.writeBigUInt64LE(0n, 36);
+  data[44] = decimals;
+  data[45] = 1;
+  data.writeUInt32LE(0, 46);
   return data;
 }
 

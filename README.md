@@ -156,7 +156,6 @@ const tokenTransfer = await vault.wallets.send(agentAsset, {
   to: destinationTokenAccount,
   mint,
   amount: 100n,
-  decimals: 6,
 });
 ```
 
@@ -203,6 +202,10 @@ only when it differs from the configured signer. For external signing, pass
 construction, use `vault.wallets.instructions`.
 `execute` defaults `walletMetaIndex` to `0`, `targetAccounts` to `[]`,
 empty instruction data when omitted, and one post-check.
+Token transfers infer the mint decimals when `decimals` is omitted. Tokenkeg is
+used directly when explicit decimals are provided without `tokenProgram`;
+Token-2022 callers can pass `tokenProgram` and `expectedFee`, or omit decimals
+to let the SDK read the mint and compute the expected transfer fee.
 
 Helpful read-only helpers are also available:
 

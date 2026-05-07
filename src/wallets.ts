@@ -1,10 +1,12 @@
 import { PublicKey, SystemProgram, TransactionInstruction, type AccountInfo, type Connection } from "@solana/web3.js";
+import { calculateEpochFee, getTransferFeeConfig, unpackMint } from "@solana/spl-token";
 import { compareGlobalConfigToManifest, parseGlobalConfig, parseVaultConfig, parseWallet } from "./accounts.js";
 import {
   BPF_LOADER_UPGRADEABLE_PROGRAM_ID,
   DEVNET_RELEASE_MANIFEST,
   NATIVE_MINT_ID,
   SPL_TOKEN_SYNC_NATIVE_TAG,
+  TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   WALLET_LENGTH,
 } from "./constants.js";
@@ -26,6 +28,7 @@ import type {
   SetupWalletInstructionsPlan,
   SetupWalletOptions,
   SetupWalletPlan,
+  TokenSendWalletOptions,
   TokenWalletOptions,
   TransferSplParams,
   U64Input,
@@ -218,28 +221,21 @@ export class AgentVaultWalletsClient {
       return this.prepareAction(instruction, holder, options);
     }
 
-    if (options.decimals === undefined) {
-      throw new Error("decimals is required for token transfers");
-    }
-    const tokenProgram = options.tokenProgram ?? TOKEN_PROGRAM_ID;
-    const source = options.source ?? this.ataAddress(agentAsset, options.from, options.mint, tokenProgram);
+    const mintParams = await this.resolveTokenTransferMintParams(options);
+    const source = options.source ?? this.ataAddress(agentAsset, options.from, options.mint, mintParams.tokenProgram);
     const destination = options.destination
       ?? (typeof options.to === "number"
-        ? this.ataAddress(agentAsset, options.to, options.mint, tokenProgram)
+        ? this.ataAddress(agentAsset, options.to, options.mint, mintParams.tokenProgram)
         : options.to);
     const params: TransferSplParams = {
       mint: options.mint,
       source,
       destination,
       amount: options.amount,
-      decimals: options.decimals,
+      decimals: mintParams.decimals,
+      tokenProgram: mintParams.tokenProgram,
+      expectedFee: mintParams.expectedFee,
     };
-    if (options.tokenProgram !== undefined) {
-      params.tokenProgram = options.tokenProgram;
-    }
-    if (options.expectedFee !== undefined) {
-      params.expectedFee = options.expectedFee;
-    }
 
     return this.prepareAction(
       this.instructions.transferSpl(agentAsset, holder, options.from, params),
@@ -526,6 +522,64 @@ export class AgentVaultWalletsClient {
     return toPublicKey(actor);
   }
 
+  private async resolveTokenTransferMintParams(
+    options: TokenSendWalletOptions,
+  ): Promise<{ tokenProgram: PublicKey; decimals: number; expectedFee: U64Input }> {
+    const explicitTokenProgram = options.tokenProgram === undefined ? undefined : toPublicKey(options.tokenProgram);
+    if (
+      options.decimals !== undefined
+      && (explicitTokenProgram === undefined || explicitTokenProgram.equals(TOKEN_PROGRAM_ID))
+    ) {
+      return {
+        tokenProgram: explicitTokenProgram ?? TOKEN_PROGRAM_ID,
+        decimals: options.decimals,
+        expectedFee: options.expectedFee ?? 0n,
+      };
+    }
+    if (options.decimals !== undefined && explicitTokenProgram !== undefined && options.expectedFee !== undefined) {
+      return {
+        tokenProgram: explicitTokenProgram,
+        decimals: options.decimals,
+        expectedFee: options.expectedFee,
+      };
+    }
+
+    const mint = toPublicKey(options.mint);
+    const mintInfo = await this.connection.getAccountInfo(mint);
+    if (!mintInfo) {
+      throw new Error(`mint account not found: ${mint.toBase58()}`);
+    }
+    const tokenProgram = explicitTokenProgram ?? inferTokenProgramFromMintOwner(mintInfo.owner);
+    if (!mintInfo.owner.equals(tokenProgram)) {
+      throw new Error(`mint owner mismatch: expected ${tokenProgram.toBase58()}, got ${mintInfo.owner.toBase58()}`);
+    }
+
+    const parsedMint = unpackMint(mint, mintInfo, tokenProgram);
+    const decimals = options.decimals ?? parsedMint.decimals;
+    const expectedFee = options.expectedFee
+      ?? (tokenProgram.equals(TOKEN_2022_PROGRAM_ID)
+        ? await this.calculateToken2022ExpectedFee(parsedMint, options.amount)
+        : 0n);
+
+    return {
+      tokenProgram,
+      decimals,
+      expectedFee,
+    };
+  }
+
+  private async calculateToken2022ExpectedFee(
+    mint: ReturnType<typeof unpackMint>,
+    amount: U64Input,
+  ): Promise<bigint> {
+    const transferFeeConfig = getTransferFeeConfig(mint);
+    if (!transferFeeConfig) {
+      return 0n;
+    }
+    const epochInfo = await this.connection.getEpochInfo();
+    return calculateEpochFee(transferFeeConfig, BigInt(epochInfo.epoch), BigInt(amount));
+  }
+
   private async prepareAction(
     instruction: TransactionInstruction,
     defaultFeePayer: PublicKeyish,
@@ -712,6 +766,13 @@ function signerPublicKey(signer: AgentVaultTransactionSigner | undefined): Publi
     return undefined;
   }
   return signer.publicKey instanceof PublicKey ? signer.publicKey : new PublicKey(signer.publicKey);
+}
+
+function inferTokenProgramFromMintOwner(owner: PublicKey): PublicKey {
+  if (owner.equals(TOKEN_PROGRAM_ID) || owner.equals(TOKEN_2022_PROGRAM_ID)) {
+    return owner;
+  }
+  throw new Error(`unsupported mint owner: ${owner.toBase58()}`);
 }
 
 function normalizeListOptions(options: ListWalletsOptions): NormalizedListWalletsOptions {

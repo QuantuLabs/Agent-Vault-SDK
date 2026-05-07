@@ -197,7 +197,7 @@ export interface TokenSendWalletOptions extends WalletActionOptions {
   to: number | PublicKeyish;
   amount: U64Input;
   mint: PublicKeyish;
-  decimals: number;
+  decimals?: number;
   tokenProgram?: PublicKeyish;
   expectedFee?: U64Input;
   source?: PublicKeyish;
