@@ -31,7 +31,8 @@ Target API:
 ```ts
 AgentVaultClient.devnet({ connection, identity, signer })
 
-client.identities.create({ uri, atomEnabled, collectionPointer })
+client.identities.register(uri, { atomEnabled, collectionPointer })
+client.identities.registerAgent(uri, { atomEnabled, collectionPointer })
 client.identities.getAgentAccountPda(agentAsset)
 client.identities.requireIdentitySdk()
 ```
@@ -44,9 +45,10 @@ const agent = client.agent(agentAsset)
 
 agent.wallets.setup({ labels })
 agent.wallets.list({ startIndex, limit, includeClosed })
-agent.wallets.fund({ wallet, amount })
-agent.wallets.send({ from, to, amount, mint })
-agent.wallets.token({ action, wallet, mint, amount })
+agent.wallets.fund({ wallet, sol })
+agent.wallets.send({ from, to, sol })
+agent.wallets.send({ from, to, mint, tokens })
+agent.wallets.token({ action, wallet, mint, sol })
 agent.wallets.execute({ wallet, targetProgram, targetInstructionData, postCheckData })
 ```
 
@@ -57,9 +59,10 @@ Target API:
 ```ts
 client.wallets.setup(agentAsset, { labels, includeVaultInit, feePayer, signer, send })
 client.wallets.list(agentAsset, { startIndex, limit, includeClosed })
-client.wallets.fund(agentAsset, { wallet, amount, feePayer, signer, send })
-client.wallets.send(agentAsset, { from, to, amount, mint, tokenProgram })
-client.wallets.token(agentAsset, { action, wallet, mint, amount, tokenProgram })
+client.wallets.fund(agentAsset, { wallet, sol, feePayer, signer, send })
+client.wallets.send(agentAsset, { from, to, sol })
+client.wallets.send(agentAsset, { from, to, mint, tokens, tokenProgram })
+client.wallets.token(agentAsset, { action, wallet, mint, sol, tokenProgram })
 client.wallets.execute(agentAsset, { wallet, targetProgram, targetInstructionData, postCheckData })
 ```
 
@@ -75,6 +78,12 @@ data when omitted, and one post-check; callers pass the explicit fields only
 for more complex CPI plans. Token transfers infer mint decimals when omitted,
 and Token-2022 transfers can infer the expected transfer fee from the mint when
 the caller omits `expectedFee`.
+
+High-level SOL methods accept `sol` as a decimal number or string. High-level
+token transfers accept `tokens` as a decimal number or string and convert it
+after mint decimal inference. Raw integer units remain available for advanced
+callers as `lamports`, `baseUnits`, and deprecated backward-compatible
+`amount`, but beginner documentation must use `sol` and `tokens`.
 
 Read-only helpers remain available:
 
@@ -128,14 +137,15 @@ signed writes. Each signed write or signed preview performs a fresh live
 verification so a post-verification ProgramData or global-config mismatch is
 caught before signing.
 
-## Identity Creation
+## Identity Registration
 
-Identity creation is delegated to `8004-solana`:
+Identity registration is delegated to `8004-solana` and mirrors its
+`registerAgent(tokenUri, options)` naming:
 
 ```ts
 const identity = new SolanaSDK({ cluster: "devnet", signer });
 const client = new AgentVaultClient({ connection, identity, signer });
-await client.identities.create({ uri: "ipfs://..." });
+await client.identities.register("ipfs://...");
 ```
 
 The returned value normalizes the 8004 response into:
@@ -149,3 +159,5 @@ The returned value normalizes the 8004 response into:
 
 If no identity SDK is configured, identity creation fails with an actionable
 error instead of silently building partial transactions.
+
+`client.identities.create(...)` remains as a compatibility alias only.

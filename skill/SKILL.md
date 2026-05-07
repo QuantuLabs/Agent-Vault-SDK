@@ -9,7 +9,7 @@ Use the scoped beginner surface first:
 
 ```ts
 const vault = AgentVaultClient.devnet({ connection, identity, signer });
-const { agentAsset } = await vault.identities.create({ uri });
+const { agentAsset } = await vault.identities.register(uri);
 const agent = vault.agent(agentAsset);
 ```
 
@@ -17,17 +17,18 @@ Prefer these calls for normal app code:
 
 ```ts
 await agent.wallets.setup({ labels: ["treasury", "defi"] });
-await agent.wallets.fund({ wallet: 0, amount: 1_000_000n });
-await agent.wallets.send({ from: 0, to: recipient, amount: 500_000n });
-await agent.wallets.send({ from: 0, to: tokenAccount, mint, amount: 100n });
+await agent.wallets.fund({ wallet: 0, sol: "0.001" });
+await agent.wallets.send({ from: 0, to: recipient, sol: "0.0005" });
+await agent.wallets.send({ from: 0, to: tokenAccount, mint, tokens: "100" });
 await agent.wallets.token({ action: "createAta", wallet: 0, mint });
-await agent.wallets.token({ action: "wrapSol", wallet: 0, amount: 1_000_000n });
+await agent.wallets.token({ action: "wrapSol", wallet: 0, sol: "0.001" });
 ```
 
 ## Defaults
 
 - `holder` is inferred from `client.signer.publicKey`.
 - `payer` is inferred from `client.signer.publicKey`.
+- Use `sol` and `tokens` in app-facing code. Raw `lamports`, `baseUnits`, or deprecated `amount` are advanced-only.
 - Token transfers infer mint decimals when `decimals` is omitted.
 - Token-2022 transfers can infer `expectedFee` from the mint.
 - `execute` defaults `walletMetaIndex = 0`, `targetAccounts = []`, empty target data, and one post-check.

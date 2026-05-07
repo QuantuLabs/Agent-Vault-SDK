@@ -139,7 +139,7 @@ async function main(): Promise<void> {
 
   const uri = `ipfs://agent-vault-sdk-e2e-${Date.now()}`;
   const identityResult = await costs.measure("8004 identity create", "identity", () =>
-    vault.identities.create({ uri, atomEnabled: false })
+    vault.identities.register(uri, { atomEnabled: false })
   );
   const agentAsset = identityResult.agentAsset;
   console.log(`agent asset: ${agentAsset.toBase58()}`);
@@ -182,7 +182,7 @@ async function main(): Promise<void> {
   const fundPreview = await vault.wallets.fund(agentAsset, {
     wallet: 0,
     payer: signer.publicKey,
-    amount: 20_000n,
+    sol: "0.00002",
     send: false,
     allowUnverifiedDeployment,
   });
@@ -191,7 +191,7 @@ async function main(): Promise<void> {
     vault.wallets.fund(agentAsset, {
       wallet: 0,
       payer: signer.publicKey,
-      amount: 20_000n,
+      sol: "0.00002",
       allowUnverifiedDeployment,
     })
   );
@@ -203,7 +203,7 @@ async function main(): Promise<void> {
     holder: signer.publicKey,
     from: 0,
     to: 1,
-    amount: 5_000n,
+    sol: "0.000005",
     send: false,
     allowUnverifiedDeployment,
   });
@@ -213,7 +213,7 @@ async function main(): Promise<void> {
       holder: signer.publicKey,
       from: 0,
       to: 1,
-      amount: 5_000n,
+      sol: "0.000005",
       allowUnverifiedDeployment,
     })
   );
@@ -226,7 +226,7 @@ async function main(): Promise<void> {
     holder: signer.publicKey,
     from: 1,
     to: recipient,
-    amount: 1_000n,
+    sol: "0.000001",
     send: false,
     allowUnverifiedDeployment,
   });
@@ -236,7 +236,7 @@ async function main(): Promise<void> {
       holder: signer.publicKey,
       from: 1,
       to: recipient,
-      amount: 1_000n,
+      sol: "0.000001",
       allowUnverifiedDeployment,
     })
   );
@@ -348,7 +348,7 @@ async function runTokenFlow(
     from: 2,
     to: destinationAta,
     mint: mint.publicKey,
-    amount: 7n,
+    tokens: "0.000007",
     decimals: 6,
     send: false,
   });
@@ -359,7 +359,7 @@ async function runTokenFlow(
       from: 2,
       to: destinationAta,
       mint: mint.publicKey,
-      amount: 7n,
+      tokens: "0.000007",
       decimals: 6,
     })
   );
@@ -404,7 +404,7 @@ async function runWsolFlow(
   const fundWsol = await vault.wallets.fund(agentAsset, {
     wallet: 3,
     payer: signer.publicKey,
-    amount: 50_000n,
+    sol: "0.00005",
     send: false,
   });
   await simulate(connection, fundWsol.transaction, "wallets.fund wsol");
@@ -412,7 +412,7 @@ async function runWsolFlow(
     vault.wallets.fund(agentAsset, {
       wallet: 3,
       payer: signer.publicKey,
-      amount: 50_000n,
+      sol: "0.00005",
     })
   );
   assert.ok(fundWsolSent.signature, "fund WSOL wallet signature missing");
@@ -443,7 +443,7 @@ async function runWsolFlow(
     action: "wrapSol",
     holder: signer.publicKey,
     wallet: 3,
-    amount: 10_000n,
+    sol: "0.00001",
     send: false,
   });
   await simulate(connection, wrap.transaction, "wallets.token wrapSol");
@@ -452,7 +452,7 @@ async function runWsolFlow(
       action: "wrapSol",
       holder: signer.publicKey,
       wallet: 3,
-      amount: 10_000n,
+      sol: "0.00001",
     })
   );
   coverage.add(AGENT_VAULT_TAGS.wrapSol);

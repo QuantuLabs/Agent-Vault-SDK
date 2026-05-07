@@ -20,6 +20,8 @@ import {
   VAULT_CONFIG_LENGTH,
   WALLET_LENGTH,
   encodeLabel,
+  solToLamports,
+  tokensToBaseUnits,
   parseWallet,
   u64Le,
   type AgentVaultReleaseManifest,
@@ -49,6 +51,12 @@ assert.equal(label.subarray(0, 7).toString("utf8"), "trading");
 assert.throws(() => encodeLabel("bad\0label"), /NUL/);
 assert.throws(() => encodeLabel(Uint8Array.of(98, 97, 100, 0, 1)), /nonzero/);
 assert.throws(() => u64Le(Number.MAX_SAFE_INTEGER + 1), /safe integer/);
+assert.equal(solToLamports("0.0005"), 500_000n);
+assert.equal(solToLamports(0.001), 1_000_000n);
+assert.equal(tokensToBaseUnits("1.25", 6), 1_250_000n);
+assert.equal(tokensToBaseUnits(1e-6, 6), 1n);
+assert.throws(() => solToLamports("0.0000000001"), /too many decimal places/);
+assert.throws(() => tokensToBaseUnits("0.0000001", 6), /too many decimal places/);
 
 const devnetE2eSource = readFileSync(new URL("../scripts/e2e-devnet.ts", import.meta.url), "utf8");
 for (const expectedCostLabel of [
@@ -114,19 +122,32 @@ const failedIdentityClient = AgentVaultClient.devnet({
   },
 });
 await assert.rejects(
-  () => failedIdentityClient.identities.create({ assetPubkey: agentAsset }),
+  () => failedIdentityClient.identities.register({ assetPubkey: agentAsset }),
   /8004 identity creation failed: registry rejected/,
 );
+let registerAgentUri: string | undefined;
+let registerAgentOptions: Record<string, unknown> | undefined;
 const fallbackIdentityClient = AgentVaultClient.devnet({
   connection,
   signer: holderSigner,
   allowUnverifiedDeployment: true,
   identity: {
-    registerAgent: async () => ({ success: true }),
+    registerAgent: async (uri?: string, options?: Record<string, unknown>) => {
+      registerAgentUri = uri;
+      registerAgentOptions = options;
+      return { success: true };
+    },
   },
 });
-const fallbackIdentity = await fallbackIdentityClient.identities.create({ assetPubkey: agentAsset });
+const fallbackIdentity = await fallbackIdentityClient.identities.register("ipfs://agent", {
+  atomEnabled: true,
+  assetPubkey: agentAsset,
+});
 assert.equal(fallbackIdentity.agentAsset.toBase58(), agentAsset.toBase58());
+assert.equal(registerAgentUri, "ipfs://agent");
+assert.equal(registerAgentOptions?.atomEnabled, true);
+const createAliasIdentity = await fallbackIdentityClient.identities.create({ assetPubkey: agentAsset });
+assert.equal(createAliasIdentity.agentAsset.toBase58(), agentAsset.toBase58());
 const strictClient = new AgentVaultClient({
   connection,
   signer: holderSigner,
@@ -365,16 +386,17 @@ assert.equal(setupPreview.transaction.instructions.length, setupPreview.instruct
 
 const deposit = await client.wallets.fund(agentAsset, {
   wallet: 0,
-  amount: 1_000n,
+  sol: "0.000001",
 });
 assert.equal(deposit.instruction.data[0], AGENT_VAULT_TAGS.depositSol);
+assert.equal(deposit.instruction.data.readBigUInt64LE(1), 1_000n);
 assert.equal(deposit.instructions.length, 1);
 assert.equal(deposit.sent, true);
 assert.equal(deposit.signed, true);
 assert.equal(deposit.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
 const scopedDeposit = await agentScope.wallets.fund({
   wallet: 0,
-  amount: 1_000n,
+  sol: 0.000001,
   send: false,
   sign: false,
 });
@@ -384,18 +406,19 @@ assert.equal(scopedDeposit.instruction.data[0], AGENT_VAULT_TAGS.depositSol);
 const withdraw = await client.wallets.send(agentAsset, {
   from: 0,
   to: holder,
-  amount: 500n,
+  sol: "0.0000005",
   send: false,
   sign: false,
 });
 assert.equal(withdraw.instruction.data[0], AGENT_VAULT_TAGS.withdrawSol);
+assert.equal(withdraw.instruction.data.readBigUInt64LE(3), 500n);
 assert.equal(withdraw.sent, false);
 assert.equal(withdraw.signed, false);
 assert.equal(withdraw.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
 const scopedWithdraw = await agentScope.wallets.send({
   from: 0,
   to: holder,
-  amount: 500n,
+  sol: "0.0000005",
   send: false,
   sign: false,
 });
@@ -405,12 +428,13 @@ const tokenTransferPreview = await client.wallets.send(agentAsset, {
   from: 0,
   to: client.wallets.ataAddress(agentAsset, 1, agentAsset),
   mint: agentAsset,
-  amount: 1n,
+  tokens: "0.000000001",
   decimals: 9,
   send: false,
   sign: false,
 });
 assert.equal(tokenTransferPreview.instruction.data[0], AGENT_VAULT_TAGS.transferSpl);
+assert.equal(tokenTransferPreview.instruction.data.readBigUInt64LE(3), 1n);
 assert.equal(tokenTransferPreview.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
 
 const inferredMintClient = AgentVaultClient.devnet({
@@ -430,13 +454,25 @@ const inferredTokenTransferPreview = await inferredMintClient.wallets.send(agent
   from: 0,
   to: client.wallets.ataAddress(agentAsset, 1, agentAsset),
   mint: agentAsset,
-  amount: 1n,
+  tokens: "1.25",
   send: false,
   sign: false,
 });
 assert.equal(inferredTokenTransferPreview.instruction.data[0], AGENT_VAULT_TAGS.transferSpl);
+assert.equal(inferredTokenTransferPreview.instruction.data.readBigUInt64LE(3), 1_250_000n);
 assert.equal(inferredTokenTransferPreview.instruction.data[11], 6);
 assert.equal(inferredTokenTransferPreview.instruction.keys[8]?.pubkey.toBase58(), TOKEN_PROGRAM_ID.toBase58());
+await assert.rejects(
+  () => inferredMintClient.wallets.send(agentAsset, {
+    from: 0,
+    to: client.wallets.ataAddress(agentAsset, 1, agentAsset),
+    mint: agentAsset,
+    tokens: "0.0000001",
+    send: false,
+    sign: false,
+  }),
+  /too many decimal places/,
+);
 
 const createAtaPreview = await client.wallets.token(agentAsset, {
   action: "createAta",
@@ -469,12 +505,13 @@ assert.equal(closeAtaPreview.instruction.keys[7]?.pubkey.toBase58(), holder.toBa
 const wrap = await client.wallets.token(agentAsset, {
   action: "wrapSol",
   wallet: 0,
-  amount: 123n,
+  sol: "0.000000123",
   send: false,
   sign: false,
 });
 assert.equal(wrap.instructions.length, 2);
 assert.equal(wrap.instructions[0]?.data[0], AGENT_VAULT_TAGS.wrapSol);
+assert.equal(wrap.instructions[0]?.data.readBigUInt64LE(3), 123n);
 assert.equal(wrap.instructions[1]?.programId.toBase58(), TOKEN_PROGRAM_ID.toBase58());
 assert.equal(wrap.instructions[1]?.data[0], SPL_TOKEN_SYNC_NATIVE_TAG);
 assert.equal(

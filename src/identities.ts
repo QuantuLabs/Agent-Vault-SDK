@@ -1,7 +1,13 @@
 import { PublicKey } from "@solana/web3.js";
 import { SolanaSDK } from "8004-solana";
 import { AgentVaultPdas } from "./pda.js";
-import type { CreateIdentityParams, CreateIdentityResult, IdentitySdk, PublicKeyish } from "./types.js";
+import type {
+  CreateIdentityParams,
+  CreateIdentityResult,
+  IdentitySdk,
+  PublicKeyish,
+  RegisterIdentityOptions,
+} from "./types.js";
 
 type RegisterAgent = (uri?: string, options?: Record<string, unknown>) => Promise<unknown>;
 
@@ -26,7 +32,14 @@ export class AgentVaultIdentitiesClient {
     return this.pdas.agentAccount(agentAsset);
   }
 
-  async create(params: CreateIdentityParams): Promise<CreateIdentityResult> {
+  async register(): Promise<CreateIdentityResult>;
+  async register(params: CreateIdentityParams): Promise<CreateIdentityResult>;
+  async register(uri: string, options?: RegisterIdentityOptions): Promise<CreateIdentityResult>;
+  async register(
+    paramsOrUri?: string | CreateIdentityParams,
+    registerOptions: RegisterIdentityOptions = {},
+  ): Promise<CreateIdentityResult> {
+    const params = normalizeRegisterParams(paramsOrUri, registerOptions);
     const identity = this.requireIdentitySdk();
     const options: Record<string, unknown> = { ...(params.options ?? {}) };
     assignDefined(options, "atomEnabled", params.atomEnabled);
@@ -44,6 +57,27 @@ export class AgentVaultIdentitiesClient {
     const agentAsset = extractAgentAsset(result, params.assetPubkey);
     return { agentAsset, result };
   }
+
+  async registerAgent(uri?: string, options?: RegisterIdentityOptions): Promise<CreateIdentityResult> {
+    return uri === undefined ? this.register(options ?? {}) : this.register(uri, options);
+  }
+
+  async create(params: CreateIdentityParams): Promise<CreateIdentityResult> {
+    return this.register(params);
+  }
+}
+
+function normalizeRegisterParams(
+  paramsOrUri: string | CreateIdentityParams | undefined,
+  options: RegisterIdentityOptions,
+): CreateIdentityParams {
+  if (typeof paramsOrUri === "string") {
+    return { ...options, uri: paramsOrUri };
+  }
+  if (paramsOrUri === undefined) {
+    return { ...options };
+  }
+  return paramsOrUri;
 }
 
 function assignDefined(target: Record<string, unknown>, key: string, value: unknown): void {

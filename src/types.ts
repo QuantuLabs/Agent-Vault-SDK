@@ -14,6 +14,7 @@ import type { SolanaSDK } from "8004-solana";
 
 export type PublicKeyish = PublicKey | string | { toBase58(): string };
 export type U64Input = bigint | number | string;
+export type DecimalAmountInput = number | string;
 export type TokenProgramKind = "tokenkeg" | "token2022";
 export type AgentVaultTransactionSigner =
   | Signer
@@ -75,6 +76,8 @@ export interface CreateIdentityParams {
   assetPubkey?: PublicKey;
   options?: Record<string, unknown>;
 }
+
+export type RegisterIdentityOptions = Omit<CreateIdentityParams, "uri">;
 
 export interface CreateIdentityResult {
   agentAsset: PublicKey;
@@ -182,25 +185,36 @@ export interface WalletActionPlan extends ExecutedVaultTransaction {
   instructions: TransactionInstruction[];
 }
 
-export interface FundWalletOptions extends WalletActionOptions {
-  wallet: number;
-  payer?: PublicKeyish;
-  amount: U64Input;
+export interface SolAmountOptions {
+  sol?: DecimalAmountInput;
+  lamports?: U64Input;
+  /** @deprecated Use `sol` for app-facing SOL amounts or `lamports` for explicit raw units. */
+  amount?: U64Input;
 }
 
-export interface SolSendWalletOptions extends WalletActionOptions {
+export interface TokenAmountOptions {
+  tokens?: DecimalAmountInput;
+  baseUnits?: U64Input;
+  /** @deprecated Use `tokens` for app-facing token amounts or `baseUnits` for explicit raw units. */
+  amount?: U64Input;
+}
+
+export interface FundWalletOptions extends WalletActionOptions, SolAmountOptions {
+  wallet: number;
+  payer?: PublicKeyish;
+}
+
+export interface SolSendWalletOptions extends WalletActionOptions, SolAmountOptions {
   holder?: PublicKeyish;
   from: number;
   to: number | PublicKeyish;
-  amount: U64Input;
   mint?: undefined;
 }
 
-export interface TokenSendWalletOptions extends WalletActionOptions {
+export interface TokenSendWalletOptions extends WalletActionOptions, TokenAmountOptions {
   holder?: PublicKeyish;
   from: number;
   to: number | PublicKeyish;
-  amount: U64Input;
   mint: PublicKeyish;
   decimals?: number;
   tokenProgram?: PublicKeyish;
@@ -227,11 +241,10 @@ export type TokenWalletOptions =
       tokenProgram?: PublicKeyish;
       rentReceiver?: PublicKeyish;
     })
-  | (WalletActionOptions & {
+  | (WalletActionOptions & SolAmountOptions & {
       action: "wrapSol";
       holder?: PublicKeyish;
       wallet: number;
-      amount: U64Input;
     })
   | (WalletActionOptions & {
       action: "unwrapSol";

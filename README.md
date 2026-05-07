@@ -28,9 +28,7 @@ const vault = AgentVaultClient.devnet({
   signer: wallet,
 });
 
-const { agentAsset } = await vault.identities.create({
-  uri: "ipfs://...",
-});
+const { agentAsset } = await vault.identities.register("ipfs://...");
 const agent = vault.agent(agentAsset);
 
 const setup = await agent.wallets.setup({
@@ -84,10 +82,11 @@ vault.identities
 vault.wallets
 ```
 
-`vault.identities` delegates identity creation to `8004-solana`:
+`vault.identities` delegates identity registration to `8004-solana` and keeps
+the same mental model as `sdk.registerAgent(...)`:
 
 ```ts
-const { agentAsset } = await vault.identities.create({ uri });
+const { agentAsset } = await vault.identities.register(uri);
 const [agentAccount] = vault.identities.getAgentAccountPda(agentAsset);
 ```
 
@@ -98,8 +97,8 @@ the agent identity once, so wallet calls do not repeat `agentAsset`:
 const agent = vault.agent(agentAsset);
 
 await agent.wallets.setup({ labels: ["treasury", "defi"] });
-await agent.wallets.fund({ wallet: 0, amount: 1_000_000n });
-await agent.wallets.send({ from: 0, to: recipient, amount: 500_000n });
+await agent.wallets.fund({ wallet: 0, sol: "0.001" });
+await agent.wallets.send({ from: 0, to: recipient, sol: "0.0005" });
 ```
 
 `vault.wallets` also exposes the same six high-level methods when you prefer
@@ -143,7 +142,7 @@ Fund a wallet with SOL:
 ```ts
 const deposit = await agent.wallets.fund({
   wallet: 0,
-  amount: 1_000_000n,
+  sol: "0.001",
 });
 ```
 
@@ -153,13 +152,13 @@ Send SOL out or between vault wallets:
 const withdraw = await agent.wallets.send({
   from: 0,
   to: recipient,
-  amount: 500_000n,
+  sol: "0.0005",
 });
 
 const internal = await agent.wallets.send({
   from: 0,
   to: 1,
-  amount: 250_000n,
+  sol: "0.00025",
 });
 ```
 
@@ -170,7 +169,7 @@ const tokenTransfer = await agent.wallets.send({
   from: 0,
   to: destinationTokenAccount,
   mint,
-  amount: 100n,
+  tokens: "100",
 });
 ```
 
@@ -194,7 +193,7 @@ const createWsolAta = await agent.wallets.token({
 const wrap = await agent.wallets.token({
   action: "wrapSol",
   wallet: 0,
-  amount: 1_000_000n,
+  sol: "0.001",
 });
 ```
 
@@ -215,6 +214,9 @@ and funding infers the payer from the same signer. Pass `holder` or `payer`
 only when it differs from the configured signer. For external signing, pass
 `{ send: false, sign: false, feePayer }`. For advanced raw instruction
 construction, use `vault.wallets.instructions`.
+Beginner-facing SOL actions accept `sol`; token actions accept `tokens`. Raw
+units remain available as `lamports`, `baseUnits`, or deprecated `amount` for
+advanced integrations that already work in exact integer units.
 `execute` defaults `walletMetaIndex` to `0`, `targetAccounts` to `[]`,
 empty instruction data when omitted, and one post-check.
 Token transfers infer the mint decimals when `decimals` is omitted. Tokenkeg is

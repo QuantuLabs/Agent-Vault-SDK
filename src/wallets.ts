@@ -1,6 +1,7 @@
 import { PublicKey, SystemProgram, TransactionInstruction, type AccountInfo, type Connection } from "@solana/web3.js";
 import { calculateEpochFee, getTransferFeeConfig, unpackMint } from "@solana/spl-token";
 import { compareGlobalConfigToManifest, parseGlobalConfig, parseVaultConfig, parseWallet } from "./accounts.js";
+import { solToLamports, tokensToBaseUnits } from "./amounts.js";
 import {
   BPF_LOADER_UPGRADEABLE_PROGRAM_ID,
   DEVNET_RELEASE_MANIFEST,
@@ -18,6 +19,7 @@ import type {
   AgentVaultScopedWallets,
   AgentVaultTransactionSigner,
   BuildTransactionOptions,
+  DecimalAmountInput,
   DeploymentVerification,
   ExecuteWalletOptions,
   ExecuteCpiCheckedParams,
@@ -53,6 +55,7 @@ const UPGRADEABLE_LOADER_PROGRAM_TAG = 2;
 const UPGRADEABLE_LOADER_PROGRAMDATA_TAG = 3;
 const PROGRAMDATA_METADATA_LENGTH = 45;
 const MAINNET_BETA_GENESIS_HASH = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
+type ParsedMint = ReturnType<typeof unpackMint>;
 
 export class AgentVaultWalletsClient {
   readonly instructions: AgentVaultInstructions;
@@ -210,8 +213,9 @@ export class AgentVaultWalletsClient {
     options: FundWalletOptions,
   ): Promise<WalletActionPlan> {
     const payer = this.resolveActor("payer", options.payer, options);
+    const amount = resolveSolAmount(options, "fund amount");
     return this.prepareAction(
-      this.instructions.depositSol(agentAsset, options.wallet, payer, options.amount),
+      this.instructions.depositSol(agentAsset, options.wallet, payer, amount),
       payer,
       options,
     );
@@ -220,13 +224,19 @@ export class AgentVaultWalletsClient {
   async send(agentAsset: PublicKeyish, options: SendWalletOptions): Promise<WalletActionPlan> {
     const holder = this.resolveActor("holder", options.holder, options);
     if (options.mint === undefined) {
+      const amount = resolveSolAmount(options, "SOL send amount");
       const instruction = typeof options.to === "number"
-        ? this.instructions.transferSol(agentAsset, holder, options.from, options.to, options.amount)
-        : this.instructions.withdrawSol(agentAsset, holder, options.from, options.amount, options.to);
+        ? this.instructions.transferSol(agentAsset, holder, options.from, options.to, amount)
+        : this.instructions.withdrawSol(agentAsset, holder, options.from, amount, options.to);
       return this.prepareAction(instruction, holder, options);
     }
 
     const mintParams = await this.resolveTokenTransferMintParams(options);
+    const amount = resolveTokenAmount(options, mintParams.decimals, "token transfer amount");
+    const expectedFee = mintParams.expectedFee
+      ?? (mintParams.tokenProgram.equals(TOKEN_2022_PROGRAM_ID)
+        ? await this.calculateToken2022ExpectedFee(requireParsedMint(mintParams.parsedMint), amount)
+        : 0n);
     const source = options.source ?? this.ataAddress(agentAsset, options.from, options.mint, mintParams.tokenProgram);
     const destination = options.destination
       ?? (typeof options.to === "number"
@@ -236,10 +246,10 @@ export class AgentVaultWalletsClient {
       mint: options.mint,
       source,
       destination,
-      amount: options.amount,
+      amount,
       decimals: mintParams.decimals,
       tokenProgram: mintParams.tokenProgram,
-      expectedFee: mintParams.expectedFee,
+      expectedFee,
     };
 
     return this.prepareAction(
@@ -253,9 +263,10 @@ export class AgentVaultWalletsClient {
     const holder = this.resolveActor("holder", options.holder, options);
     if (options.action === "wrapSol") {
       const wsolAta = this.ataAddress(agentAsset, options.wallet, NATIVE_MINT_ID, TOKEN_PROGRAM_ID);
+      const amount = resolveSolAmount(options, "wrap SOL amount");
       return this.prepareActions(
         [
-          this.instructions.wrapSol(agentAsset, holder, options.wallet, options.amount),
+          this.instructions.wrapSol(agentAsset, holder, options.wallet, amount),
           syncNativeInstruction(wsolAta),
         ],
         holder,
@@ -529,7 +540,7 @@ export class AgentVaultWalletsClient {
 
   private async resolveTokenTransferMintParams(
     options: TokenSendWalletOptions,
-  ): Promise<{ tokenProgram: PublicKey; decimals: number; expectedFee: U64Input }> {
+  ): Promise<{ tokenProgram: PublicKey; decimals: number; expectedFee?: U64Input; parsedMint?: ParsedMint }> {
     const explicitTokenProgram = options.tokenProgram === undefined ? undefined : toPublicKey(options.tokenProgram);
     if (
       options.decimals !== undefined
@@ -561,20 +572,17 @@ export class AgentVaultWalletsClient {
 
     const parsedMint = unpackMint(mint, mintInfo, tokenProgram);
     const decimals = options.decimals ?? parsedMint.decimals;
-    const expectedFee = options.expectedFee
-      ?? (tokenProgram.equals(TOKEN_2022_PROGRAM_ID)
-        ? await this.calculateToken2022ExpectedFee(parsedMint, options.amount)
-        : 0n);
 
     return {
       tokenProgram,
       decimals,
-      expectedFee,
+      ...(options.expectedFee === undefined ? {} : { expectedFee: options.expectedFee }),
+      parsedMint,
     };
   }
 
   private async calculateToken2022ExpectedFee(
-    mint: ReturnType<typeof unpackMint>,
+    mint: ParsedMint,
     amount: U64Input,
   ): Promise<bigint> {
     const transferFeeConfig = getTransferFeeConfig(mint);
@@ -831,6 +839,52 @@ function inferTokenProgramFromMintOwner(owner: PublicKey): PublicKey {
     return owner;
   }
   throw new Error(`unsupported mint owner: ${owner.toBase58()}`);
+}
+
+function resolveSolAmount(
+  options: { sol?: DecimalAmountInput; lamports?: U64Input; amount?: U64Input },
+  label: string,
+): U64Input {
+  const count = countDefined(options.sol, options.lamports, options.amount);
+  if (count !== 1) {
+    throw new Error(`${label} requires exactly one of sol, lamports, or amount`);
+  }
+  if (options.sol !== undefined) {
+    return solToLamports(options.sol);
+  }
+  return options.lamports ?? (options.amount as U64Input);
+}
+
+function resolveTokenAmount(
+  options: { tokens?: DecimalAmountInput; baseUnits?: U64Input; amount?: U64Input },
+  decimals: number,
+  label: string,
+): U64Input {
+  const count = countDefined(options.tokens, options.baseUnits, options.amount);
+  if (count !== 1) {
+    throw new Error(`${label} requires exactly one of tokens, baseUnits, or amount`);
+  }
+  if (options.tokens !== undefined) {
+    return tokensToBaseUnits(options.tokens, decimals);
+  }
+  return options.baseUnits ?? (options.amount as U64Input);
+}
+
+function countDefined(...values: unknown[]): number {
+  let count = 0;
+  for (const value of values) {
+    if (value !== undefined) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function requireParsedMint(mint: ParsedMint | undefined): ParsedMint {
+  if (mint === undefined) {
+    throw new Error("Token-2022 expected fee inference requires reading the mint account");
+  }
+  return mint;
 }
 
 function normalizeListOptions(options: ListWalletsOptions): NormalizedListWalletsOptions {

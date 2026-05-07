@@ -1,4 +1,5 @@
 export * from "./accounts.js";
+export * from "./amounts.js";
 export * from "./client.js";
 export * from "./codec.js";
 export * from "./constants.js";
