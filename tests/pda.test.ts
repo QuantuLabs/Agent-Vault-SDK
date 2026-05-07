@@ -241,6 +241,11 @@ const setupPreview = await client.wallets.setup(agentAsset, holder, {
   send: false,
   sign: false,
 });
+const inferredSetupPreview = await client.wallets.setup(agentAsset, {
+  labels: ["auto-holder"],
+  send: false,
+  sign: false,
+});
 
 assert.equal(client.wallets.address(agentAsset, 0).toBase58(), wallet0.toBase58());
 assert.equal(setupPreview.vaultExists, false);
@@ -250,6 +255,8 @@ assert.equal(setupPreview.instructions.length, 3);
 assert.equal(setupPreview.instructions[0]?.data[0], AGENT_VAULT_TAGS.initVaultConfig);
 assert.equal(setupPreview.instructions[1]?.data[0], AGENT_VAULT_TAGS.createWallet);
 assert.equal(setupPreview.instructions[2]?.data[0], AGENT_VAULT_TAGS.createWallet);
+assert.equal(inferredSetupPreview.transaction.feePayer?.toBase58(), holder.toBase58());
+assert.equal(inferredSetupPreview.instructions[0]?.keys[0]?.pubkey.toBase58(), holder.toBase58());
 
 const dustedVaultConnection = {
   ...connection,
@@ -304,13 +311,35 @@ await assert.rejects(
 );
 const strictUnsignedPreview = await strictClient.wallets.fund(agentAsset, {
   wallet: 0,
-  payer: holder,
   amount: 1n,
   send: false,
   sign: false,
 });
 assert.equal(strictUnsignedPreview.sent, false);
 assert.equal(strictUnsignedPreview.signed, false);
+
+const noSignerClient = AgentVaultClient.devnet({
+  connection,
+  allowUnverifiedDeployment: true,
+});
+await assert.rejects(
+  () => noSignerClient.wallets.fund(agentAsset, {
+    wallet: 0,
+    amount: 1n,
+    send: false,
+    sign: false,
+  }),
+  /payer is required/,
+);
+const externalUnsignedDeposit = await noSignerClient.wallets.fund(agentAsset, {
+  wallet: 0,
+  amount: 1n,
+  feePayer: holder,
+  send: false,
+  sign: false,
+});
+assert.equal(externalUnsignedDeposit.transaction.feePayer?.toBase58(), holder.toBase58());
+assert.equal(externalUnsignedDeposit.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
 
 const unsignedSetup = await client.wallets.setup(agentAsset, holder, {
   labels: ["unsigned"],
@@ -326,16 +355,15 @@ assert.equal(setupPreview.transaction.instructions.length, setupPreview.instruct
 
 const deposit = await client.wallets.fund(agentAsset, {
   wallet: 0,
-  payer: holder,
   amount: 1_000n,
 });
 assert.equal(deposit.instruction.data[0], AGENT_VAULT_TAGS.depositSol);
 assert.equal(deposit.instructions.length, 1);
 assert.equal(deposit.sent, true);
 assert.equal(deposit.signed, true);
+assert.equal(deposit.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
 
 const withdraw = await client.wallets.send(agentAsset, {
-  holder,
   from: 0,
   to: holder,
   amount: 500n,
@@ -345,10 +373,42 @@ const withdraw = await client.wallets.send(agentAsset, {
 assert.equal(withdraw.instruction.data[0], AGENT_VAULT_TAGS.withdrawSol);
 assert.equal(withdraw.sent, false);
 assert.equal(withdraw.signed, false);
+assert.equal(withdraw.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
+
+const tokenTransferPreview = await client.wallets.send(agentAsset, {
+  from: 0,
+  to: client.wallets.ataAddress(agentAsset, 1, agentAsset),
+  mint: agentAsset,
+  amount: 1n,
+  decimals: 9,
+  send: false,
+  sign: false,
+});
+assert.equal(tokenTransferPreview.instruction.data[0], AGENT_VAULT_TAGS.transferSpl);
+assert.equal(tokenTransferPreview.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
+
+const createAtaPreview = await client.wallets.token(agentAsset, {
+  action: "createAta",
+  wallet: 0,
+  mint: agentAsset,
+  send: false,
+  sign: false,
+});
+assert.equal(createAtaPreview.instruction.data[0], AGENT_VAULT_TAGS.createWalletAta);
+assert.equal(createAtaPreview.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
+
+const closeAtaPreview = await client.wallets.token(agentAsset, {
+  action: "closeAta",
+  wallet: 0,
+  mint: agentAsset,
+  send: false,
+  sign: false,
+});
+assert.equal(closeAtaPreview.instruction.data[0], AGENT_VAULT_TAGS.closeWalletAta);
+assert.equal(closeAtaPreview.instruction.keys[7]?.pubkey.toBase58(), holder.toBase58());
 
 const wrap = await client.wallets.token(agentAsset, {
   action: "wrapSol",
-  holder,
   wallet: 0,
   amount: 123n,
   send: false,
@@ -362,6 +422,19 @@ assert.equal(
   wrap.instructions[1]?.keys[0]?.pubkey.toBase58(),
   client.wallets.ataAddress(agentAsset, 0, NATIVE_MINT_ID).toBase58(),
 );
+
+const executePreview = await client.wallets.execute(agentAsset, {
+  wallet: 0,
+  targetProgram: SystemProgram.programId,
+  postCheckData: Buffer.alloc(10),
+  send: false,
+  sign: false,
+});
+assert.equal(executePreview.instruction.data[0], AGENT_VAULT_TAGS.executeCpiChecked);
+assert.equal(executePreview.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
+assert.equal(executePreview.instruction.data[3], 0);
+assert.equal(executePreview.instruction.data[4], 0);
+assert.equal(executePreview.instruction.data[7], 1);
 
 await assert.rejects(() => client.wallets.list(agentAsset, { chunkSize: 0 }), /chunkSize/);
 new AgentVaultInstructions().transferSpl(agentAsset, holder, 0, {

@@ -174,11 +174,14 @@ export class AgentVaultWalletsClient {
     };
   }
 
+  async setup(agentAsset: PublicKeyish, options?: SetupWalletOptions): Promise<SetupWalletPlan>;
+  async setup(agentAsset: PublicKeyish, holder: PublicKeyish, options?: SetupWalletOptions): Promise<SetupWalletPlan>;
   async setup(
     agentAsset: PublicKeyish,
-    holder: PublicKeyish,
-    options: SetupWalletOptions = {},
+    holderOrOptions?: PublicKeyish | SetupWalletOptions,
+    maybeOptions: SetupWalletOptions = {},
   ): Promise<SetupWalletPlan> {
+    const { holder, options } = this.normalizeSetupArgs(holderOrOptions, maybeOptions);
     const setup = await this.buildSetupInstructions(agentAsset, holder, options);
     const transactionOptions: BuildTransactionOptions = {
       feePayer: options.feePayer ?? holder,
@@ -198,19 +201,21 @@ export class AgentVaultWalletsClient {
     agentAsset: PublicKeyish,
     options: FundWalletOptions,
   ): Promise<WalletActionPlan> {
+    const payer = this.resolveActor("payer", options.payer, options);
     return this.prepareAction(
-      this.instructions.depositSol(agentAsset, options.wallet, options.payer, options.amount),
-      options.payer,
+      this.instructions.depositSol(agentAsset, options.wallet, payer, options.amount),
+      payer,
       options,
     );
   }
 
   async send(agentAsset: PublicKeyish, options: SendWalletOptions): Promise<WalletActionPlan> {
+    const holder = this.resolveActor("holder", options.holder, options);
     if (options.mint === undefined) {
       const instruction = typeof options.to === "number"
-        ? this.instructions.transferSol(agentAsset, options.holder, options.from, options.to, options.amount)
-        : this.instructions.withdrawSol(agentAsset, options.holder, options.from, options.amount, options.to);
-      return this.prepareAction(instruction, options.holder, options);
+        ? this.instructions.transferSol(agentAsset, holder, options.from, options.to, options.amount)
+        : this.instructions.withdrawSol(agentAsset, holder, options.from, options.amount, options.to);
+      return this.prepareAction(instruction, holder, options);
     }
 
     if (options.decimals === undefined) {
@@ -237,63 +242,73 @@ export class AgentVaultWalletsClient {
     }
 
     return this.prepareAction(
-      this.instructions.transferSpl(agentAsset, options.holder, options.from, params),
-      options.holder,
+      this.instructions.transferSpl(agentAsset, holder, options.from, params),
+      holder,
       options,
     );
   }
 
   async token(agentAsset: PublicKeyish, options: TokenWalletOptions): Promise<WalletActionPlan> {
+    const holder = this.resolveActor("holder", options.holder, options);
     if (options.action === "wrapSol") {
       const wsolAta = this.ataAddress(agentAsset, options.wallet, NATIVE_MINT_ID, TOKEN_PROGRAM_ID);
       return this.prepareActions(
         [
-          this.instructions.wrapSol(agentAsset, options.holder, options.wallet, options.amount),
+          this.instructions.wrapSol(agentAsset, holder, options.wallet, options.amount),
           syncNativeInstruction(wsolAta),
         ],
-        options.holder,
+        holder,
         options,
       );
     }
     if (options.action === "unwrapSol") {
       return this.prepareAction(
-        this.instructions.unwrapSol(agentAsset, options.holder, options.wallet),
-        options.holder,
+        this.instructions.unwrapSol(agentAsset, holder, options.wallet),
+        holder,
         options,
       );
     }
     if (options.action === "createAta") {
       const instruction = options.tokenProgram === undefined
-        ? this.instructions.createAta(agentAsset, options.holder, options.wallet, options.mint)
-        : this.instructions.createAta(agentAsset, options.holder, options.wallet, options.mint, options.tokenProgram);
-      return this.prepareAction(instruction, options.holder, options);
+        ? this.instructions.createAta(agentAsset, holder, options.wallet, options.mint)
+        : this.instructions.createAta(agentAsset, holder, options.wallet, options.mint, options.tokenProgram);
+      return this.prepareAction(instruction, holder, options);
     }
     return this.prepareAction(
       this.instructions.closeAta(
         agentAsset,
-        options.holder,
+        holder,
         options.wallet,
         options.mint,
         options.tokenProgram ?? TOKEN_PROGRAM_ID,
-        options.rentReceiver,
+        options.rentReceiver ?? holder,
       ),
-      options.holder,
+      holder,
       options,
     );
   }
 
   async execute(agentAsset: PublicKeyish, options: ExecuteWalletOptions): Promise<WalletActionPlan> {
+    const holder = this.resolveActor("holder", options.holder, options);
     const params: ExecuteCpiCheckedParams = {
-      walletMetaIndex: options.walletMetaIndex,
       targetProgram: options.targetProgram,
-      targetAccounts: options.targetAccounts,
-      targetInstructionData: options.targetInstructionData,
-      postCheckCount: options.postCheckCount,
       postCheckData: options.postCheckData,
     };
+    if (options.walletMetaIndex !== undefined) {
+      params.walletMetaIndex = options.walletMetaIndex;
+    }
+    if (options.targetAccounts !== undefined) {
+      params.targetAccounts = options.targetAccounts;
+    }
+    if (options.targetInstructionData !== undefined) {
+      params.targetInstructionData = options.targetInstructionData;
+    }
+    if (options.postCheckCount !== undefined) {
+      params.postCheckCount = options.postCheckCount;
+    }
     return this.prepareAction(
-      this.instructions.executeCpiChecked(agentAsset, options.holder, options.wallet, params),
-      options.holder,
+      this.instructions.executeCpiChecked(agentAsset, holder, options.wallet, params),
+      holder,
       options,
     );
   }
@@ -479,6 +494,38 @@ export class AgentVaultWalletsClient {
     };
   }
 
+  private normalizeSetupArgs(
+    holderOrOptions: PublicKeyish | SetupWalletOptions | undefined,
+    maybeOptions: SetupWalletOptions,
+  ): { holder: PublicKey; options: SetupWalletOptions } {
+    if (holderOrOptions === undefined || !isPublicKeyish(holderOrOptions)) {
+      const options = (holderOrOptions ?? maybeOptions) as SetupWalletOptions;
+      return {
+        holder: this.resolveActor("holder", options.holder, options),
+        options,
+      };
+    }
+    return {
+      holder: toPublicKey(holderOrOptions),
+      options: maybeOptions,
+    };
+  }
+
+  private resolveActor(
+    label: "holder" | "payer",
+    explicit: PublicKeyish | undefined,
+    options: WalletActionOptions,
+  ): PublicKey {
+    const actor = explicit
+      ?? signerPublicKey(options.signer)
+      ?? signerPublicKey(this.signer)
+      ?? options.feePayer;
+    if (actor === undefined) {
+      throw new Error(`${label} is required when no signer publicKey is configured`);
+    }
+    return toPublicKey(actor);
+  }
+
   private async prepareAction(
     instruction: TransactionInstruction,
     defaultFeePayer: PublicKeyish,
@@ -648,6 +695,23 @@ function applyTransactionOptions(target: BuildTransactionOptions, options: Walle
   if (options.sendOptions !== undefined) {
     target.sendOptions = options.sendOptions;
   }
+}
+
+function isPublicKeyish(value: unknown): value is PublicKeyish {
+  if (typeof value === "string" || value instanceof PublicKey) {
+    return true;
+  }
+  return typeof value === "object"
+    && value !== null
+    && "toBase58" in value
+    && typeof (value as { toBase58?: unknown }).toBase58 === "function";
+}
+
+function signerPublicKey(signer: AgentVaultTransactionSigner | undefined): PublicKey | undefined {
+  if (!signer?.publicKey) {
+    return undefined;
+  }
+  return signer.publicKey instanceof PublicKey ? signer.publicKey : new PublicKey(signer.publicKey);
 }
 
 function normalizeListOptions(options: ListWalletsOptions): NormalizedListWalletsOptions {

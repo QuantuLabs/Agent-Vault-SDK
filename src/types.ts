@@ -141,7 +141,9 @@ export interface TransactionPlanOptions {
   allowUnverifiedDeployment?: boolean;
 }
 
-export interface SetupWalletOptions extends SetupWalletInstructionsOptions, TransactionPlanOptions {}
+export interface SetupWalletOptions extends SetupWalletInstructionsOptions, TransactionPlanOptions {
+  holder?: PublicKeyish;
+}
 
 export interface SetupWalletInstructionsPlan {
   agentAsset: PublicKey;
@@ -177,12 +179,12 @@ export interface WalletActionPlan extends ExecutedVaultTransaction {
 
 export interface FundWalletOptions extends WalletActionOptions {
   wallet: number;
-  payer: PublicKeyish;
+  payer?: PublicKeyish;
   amount: U64Input;
 }
 
 export interface SolSendWalletOptions extends WalletActionOptions {
-  holder: PublicKeyish;
+  holder?: PublicKeyish;
   from: number;
   to: number | PublicKeyish;
   amount: U64Input;
@@ -190,7 +192,7 @@ export interface SolSendWalletOptions extends WalletActionOptions {
 }
 
 export interface TokenSendWalletOptions extends WalletActionOptions {
-  holder: PublicKeyish;
+  holder?: PublicKeyish;
   from: number;
   to: number | PublicKeyish;
   amount: U64Input;
@@ -207,33 +209,33 @@ export type SendWalletOptions = SolSendWalletOptions | TokenSendWalletOptions;
 export type TokenWalletOptions =
   | (WalletActionOptions & {
       action: "createAta";
-      holder: PublicKeyish;
+      holder?: PublicKeyish;
       wallet: number;
       mint: PublicKeyish;
       tokenProgram?: PublicKeyish;
     })
   | (WalletActionOptions & {
       action: "closeAta";
-      holder: PublicKeyish;
+      holder?: PublicKeyish;
       wallet: number;
       mint: PublicKeyish;
       tokenProgram?: PublicKeyish;
-      rentReceiver: PublicKeyish;
+      rentReceiver?: PublicKeyish;
     })
   | (WalletActionOptions & {
       action: "wrapSol";
-      holder: PublicKeyish;
+      holder?: PublicKeyish;
       wallet: number;
       amount: U64Input;
     })
   | (WalletActionOptions & {
       action: "unwrapSol";
-      holder: PublicKeyish;
+      holder?: PublicKeyish;
       wallet: number;
     });
 
 export interface ExecuteWalletOptions extends ExecuteCpiCheckedParams, WalletActionOptions {
-  holder: PublicKeyish;
+  holder?: PublicKeyish;
   wallet: number;
 }
 
@@ -248,15 +250,15 @@ export interface TransferSplParams {
 }
 
 export interface ExecuteCpiCheckedParams {
-  walletMetaIndex: number;
+  walletMetaIndex?: number;
   targetProgram: PublicKeyish;
-  targetAccounts: Array<{
+  targetAccounts?: Array<{
     pubkey: PublicKeyish;
     isSigner?: boolean;
     isWritable?: boolean;
   }>;
-  targetInstructionData: Uint8Array;
-  postCheckCount: number;
+  targetInstructionData?: Uint8Array;
+  postCheckCount?: number;
   postCheckData: Uint8Array;
 }
 

@@ -289,13 +289,15 @@ export class AgentVaultInstructions {
   }
 
   executeCpiChecked(agentAsset: PublicKeyish, holder: PublicKeyish, index: number, params: ExecuteCpiCheckedParams): TransactionInstruction {
-    const walletMetaIndex = u8(params.walletMetaIndex, "walletMetaIndex");
-    const targetAccountCount = u8(params.targetAccounts.length, "target account count");
-    const postCheckCount = u8(params.postCheckCount, "postCheckCount");
+    const walletMetaIndex = u8(params.walletMetaIndex ?? 0, "walletMetaIndex");
+    const targetAccountsInput = params.targetAccounts ?? [];
+    const targetInstructionData = params.targetInstructionData ?? Buffer.alloc(0);
+    const targetAccountCount = u8(targetAccountsInput.length, "target account count");
+    const postCheckCount = u8(params.postCheckCount ?? 1, "postCheckCount");
     if (targetAccountCount > MAX_CPI_ACCOUNTS) {
       throw new RangeError(`target account count must be <= ${MAX_CPI_ACCOUNTS}`);
     }
-    if (params.targetInstructionData.length > MAX_CPI_IX_DATA_LEN) {
+    if (targetInstructionData.length > MAX_CPI_IX_DATA_LEN) {
       throw new RangeError(`target instruction data must be <= ${MAX_CPI_IX_DATA_LEN} bytes`);
     }
     if (postCheckCount > MAX_POST_CHECKS) {
@@ -304,7 +306,7 @@ export class AgentVaultInstructions {
     if (postCheckCount === 0) {
       throw new RangeError("postCheckCount must be at least 1");
     }
-    const targetAccounts = params.targetAccounts.map((account) =>
+    const targetAccounts = targetAccountsInput.map((account) =>
       meta(account.pubkey, account.isSigner ?? false, account.isWritable ?? false)
     );
     return new TransactionInstruction({
@@ -322,8 +324,8 @@ export class AgentVaultInstructions {
         AGENT_VAULT_TAGS.executeCpiChecked,
         u16Le(index),
         Buffer.from([walletMetaIndex, targetAccountCount]),
-        u16Le(params.targetInstructionData.length),
-        params.targetInstructionData,
+        u16Le(targetInstructionData.length),
+        targetInstructionData,
         Buffer.from([postCheckCount]),
         params.postCheckData,
       ),

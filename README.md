@@ -16,7 +16,7 @@ npm install github:QuantuLabs/Agent-Vault-SDK 8004-solana @solana/web3.js
 ## Quickstart
 
 ```ts
-import { Connection, PublicKey } from "@solana/web3.js";
+import { Connection } from "@solana/web3.js";
 import { SolanaSDK } from "8004-solana";
 import { AgentVaultClient } from "agent-vault";
 
@@ -28,12 +28,11 @@ const vault = AgentVaultClient.devnet({
   signer: wallet,
 });
 
-const holder = new PublicKey("...");
 const { agentAsset } = await vault.identities.create({
   uri: "ipfs://...",
 });
 
-const setup = await vault.wallets.setup(agentAsset, holder, {
+const setup = await vault.wallets.setup(agentAsset, {
   labels: ["treasury", "trading"],
 });
 
@@ -66,7 +65,7 @@ global config bump, and expected global config fields.
 To return a transaction for external signing instead:
 
 ```ts
-const setup = await vault.wallets.setup(agentAsset, holder, {
+const setup = await vault.wallets.setup(agentAsset, {
   labels: ["treasury", "trading"],
   send: false,
   sign: false,
@@ -107,7 +106,7 @@ vault.wallets.execute(...)
 Create the vault config and multiple wallets in one plan:
 
 ```ts
-const plan = await vault.wallets.setup(agentAsset, holder, {
+const plan = await vault.wallets.setup(agentAsset, {
   labels: ["treasury", "trading", "ops"],
 });
 
@@ -117,7 +116,7 @@ console.log(plan.signature);
 Add another wallet later with the same setup method:
 
 ```ts
-const plan = await vault.wallets.setup(agentAsset, holder, {
+const plan = await vault.wallets.setup(agentAsset, {
   labels: ["defi"],
 });
 
@@ -129,7 +128,6 @@ Fund a wallet with SOL:
 ```ts
 const deposit = await vault.wallets.fund(agentAsset, {
   wallet: 0,
-  payer,
   amount: 1_000_000n,
 });
 ```
@@ -138,14 +136,12 @@ Send SOL out or between vault wallets:
 
 ```ts
 const withdraw = await vault.wallets.send(agentAsset, {
-  holder,
   from: 0,
   to: recipient,
   amount: 500_000n,
 });
 
 const internal = await vault.wallets.send(agentAsset, {
-  holder,
   from: 0,
   to: 1,
   amount: 250_000n,
@@ -156,7 +152,6 @@ Send SPL / Token-2022 tokens:
 
 ```ts
 const tokenTransfer = await vault.wallets.send(agentAsset, {
-  holder,
   from: 0,
   to: destinationTokenAccount,
   mint,
@@ -172,21 +167,18 @@ import { NATIVE_MINT_ID } from "agent-vault";
 
 const createAta = await vault.wallets.token(agentAsset, {
   action: "createAta",
-  holder,
   wallet: 0,
   mint,
 });
 
 const createWsolAta = await vault.wallets.token(agentAsset, {
   action: "createAta",
-  holder,
   wallet: 0,
   mint: NATIVE_MINT_ID,
 });
 
 const wrap = await vault.wallets.token(agentAsset, {
   action: "wrapSol",
-  holder,
   wallet: 0,
   amount: 1_000_000n,
 });
@@ -196,20 +188,21 @@ Execute a checked CPI for DeFi composition:
 
 ```ts
 const result = await vault.wallets.execute(agentAsset, {
-  holder,
   wallet: 0,
-  walletMetaIndex: 0,
   targetProgram,
-  targetAccounts,
   targetInstructionData,
-  postCheckCount,
   postCheckData,
 });
 ```
 
 Write methods return `{ transaction, signature, confirmation, signed, sent }`.
-For external signing, pass `{ send: false, sign: false }`. For advanced raw
-instruction construction, use `vault.wallets.instructions`.
+By default, protected actions infer the holder from `client.signer.publicKey`,
+and funding infers the payer from the same signer. Pass `holder` or `payer`
+only when it differs from the configured signer. For external signing, pass
+`{ send: false, sign: false, feePayer }`. For advanced raw instruction
+construction, use `vault.wallets.instructions`.
+`execute` defaults `walletMetaIndex` to `0`, `targetAccounts` to `[]`,
+empty instruction data when omitted, and one post-check.
 
 Helpful read-only helpers are also available:
 

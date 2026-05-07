@@ -42,18 +42,24 @@ has six methods:
 Target API:
 
 ```ts
-client.wallets.setup(agentAsset, holder, { labels, includeVaultInit, feePayer, signer, send })
+client.wallets.setup(agentAsset, { labels, includeVaultInit, feePayer, signer, send })
 client.wallets.list(agentAsset, { startIndex, limit, includeClosed })
-client.wallets.fund(agentAsset, { wallet, payer, amount, feePayer, signer, send })
-client.wallets.send(agentAsset, { holder, from, to, amount, mint, decimals, tokenProgram })
-client.wallets.token(agentAsset, { action, holder, wallet, mint, amount, tokenProgram })
-client.wallets.execute(agentAsset, { holder, wallet, walletMetaIndex, targetProgram, targetAccounts, targetInstructionData, postCheckCount, postCheckData })
+client.wallets.fund(agentAsset, { wallet, amount, feePayer, signer, send })
+client.wallets.send(agentAsset, { from, to, amount, mint, decimals, tokenProgram })
+client.wallets.token(agentAsset, { action, wallet, mint, amount, tokenProgram })
+client.wallets.execute(agentAsset, { wallet, targetProgram, targetInstructionData, postCheckData })
 ```
 
 The write methods are the default DX surface. They sign, send, and confirm by
-default when a signer is configured on the client or passed per call. Passing
+default when a signer is configured on the client or passed per call. Protected
+wallet methods infer `holder` from the configured signer; funding infers `payer`
+from the same signer. Advanced callers may still pass `holder` or `payer`
+explicitly when the action authority is not the configured signer. Passing
 `send: false` returns a transaction without sending it; passing `send: false`
-and `sign: false` returns a transaction for external signing.
+and `sign: false` returns a transaction for external signing. `execute`
+defaults `walletMetaIndex` to `0`, `targetAccounts` to `[]`, empty instruction
+data when omitted, and one post-check; callers pass the explicit fields only
+for more complex CPI plans.
 
 Read-only helpers remain available:
 
