@@ -10,7 +10,7 @@ import type {
   Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
-import type { SolanaSDK } from "8004-solana";
+import type { RegistrationFile, RegistrationFileJsonOptions, SolanaSDK } from "8004-solana";
 
 export type PublicKeyish = PublicKey | string | { toBase58(): string };
 export type U64Input = bigint | number | string;
@@ -66,6 +66,9 @@ export interface AgentVaultClientConfig {
   allowUnverifiedDeployment?: boolean;
 }
 
+export type AgentMetadataInput = RegistrationFile;
+export type AgentMetadataUploader = (metadataJson: Record<string, unknown>) => Promise<string> | string;
+
 export interface RegisterAgentOptions {
   atomEnabled?: boolean;
   collectionPointer?: string;
@@ -73,11 +76,15 @@ export interface RegisterAgentOptions {
   skipSend?: boolean;
   signer?: PublicKey;
   assetPubkey?: PublicKey;
+  uploadJson?: AgentMetadataUploader;
+  metadataJsonOptions?: RegistrationFileJsonOptions;
   [option: string]: unknown;
 }
 
 export interface RegisterAgentResult {
   agentAsset: PublicKey;
+  metadataUri?: string;
+  metadataJson?: Record<string, unknown>;
   result: unknown;
 }
 

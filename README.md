@@ -17,7 +17,7 @@ npm install github:QuantuLabs/Agent-Vault-SDK 8004-solana @solana/web3.js
 
 ```ts
 import { Connection } from "@solana/web3.js";
-import { SolanaSDK } from "8004-solana";
+import { ServiceType, SolanaSDK } from "8004-solana";
 import { AgentVaultClient } from "agent-vault";
 
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");
@@ -28,7 +28,17 @@ const vault = AgentVaultClient.devnet({
   signer: wallet,
 });
 
-const { agentAsset } = await vault.registerAgent("ipfs://...");
+const { agentAsset, metadataUri } = await vault.registerAgent({
+  name: "Trading Agent",
+  description: "Agent with isolated treasury and DeFi wallets",
+  image: "ipfs://...",
+  services: [{ type: ServiceType.MCP, value: "https://agent.example/mcp" }],
+  skills: ["natural_language_processing/natural_language_generation/text_completion"],
+  domains: ["technology/software_engineering/software_engineering"],
+}, {
+  collectionPointer: collection.pointer!,
+  uploadJson: async (json) => `ipfs://${await ipfs.addJson(json)}`,
+});
 const agent = vault.agent(agentAsset);
 
 const setup = await agent.wallets.setup({
@@ -83,13 +93,30 @@ vault.identities
 vault.wallets
 ```
 
-Agent registration is intentionally the same flow as `8004-solana`:
+Agent registration is intentionally the same flow as `8004-solana`, with the
+metadata JSON and metadata URI creation handled in the same call:
+
+```ts
+const { agentAsset, metadataUri } = await vault.registerAgent({
+  name: "Trading Agent",
+  description: "Agent with isolated treasury and DeFi wallets",
+  image: "ipfs://...",
+  services: [{ type: ServiceType.MCP, value: "https://agent.example/mcp" }],
+  skills: ["natural_language_processing/natural_language_generation/text_completion"],
+  domains: ["technology/software_engineering/software_engineering"],
+}, {
+  collectionPointer: collection.pointer!,
+  uploadJson: async (json) => await ipfs.addJson(json),
+});
+const [agentAccount] = vault.identities.getAgentAccountPda(agentAsset);
+```
+
+If the metadata URI already exists, pass it directly:
 
 ```ts
 const { agentAsset } = await vault.registerAgent(metadataUri, {
   collectionPointer: collection.pointer!,
 });
-const [agentAccount] = vault.identities.getAgentAccountPda(agentAsset);
 ```
 
 `vault.agent(agentAsset).wallets` is the recommended beginner surface. It binds

@@ -1,6 +1,6 @@
 ---
 name: agent-vault-sdk
-description: Use when building with the Agent Vault TypeScript SDK, wiring 8004 identities to Agent Vault wallets, creating simple wallet flows, preparing transactions for external signing, or debugging Agent Vault SDK devnet integration.
+description: Use when building with the Agent Vault TypeScript SDK, wiring 8004 agents to Agent Vault wallets, creating simple wallet flows, preparing transactions for external signing, or debugging Agent Vault SDK devnet integration.
 ---
 
 # Agent Vault SDK
@@ -9,7 +9,7 @@ Use the scoped beginner surface first:
 
 ```ts
 const vault = AgentVaultClient.devnet({ connection, identity, signer });
-const { agentAsset } = await vault.registerAgent(uri, { collectionPointer });
+const { agentAsset } = await vault.registerAgent(metadata, { collectionPointer, uploadJson });
 const agent = vault.agent(agentAsset);
 ```
 
@@ -28,6 +28,7 @@ await agent.wallets.token({ action: "wrapSol", wallet: 0, sol: "0.001" });
 
 - `holder` is inferred from `client.signer.publicKey`.
 - `payer` is inferred from `client.signer.publicKey`.
+- `registerAgent(metadata, { uploadJson })` builds 8004 metadata JSON and registers the returned URI; `uploadJson` may return a full URI or a bare IPFS CID.
 - Use `sol` and `tokens` in app-facing code. Raw `lamports`, `baseUnits`, or deprecated `amount` are advanced-only.
 - Token transfers infer mint decimals when `decimals` is omitted.
 - Token-2022 transfers can infer `expectedFee` from the mint.

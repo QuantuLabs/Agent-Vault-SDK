@@ -35,6 +35,7 @@ Target API:
 AgentVaultClient.devnet({ connection, identity, signer })
 
 client.registerAgent(tokenUri, { atomEnabled, collectionPointer })
+client.registerAgent(metadata, { uploadJson, atomEnabled, collectionPointer })
 client.identities.getAgentAccountPda(agentAsset)
 client.identities.requireIdentitySdk()
 ```
@@ -142,12 +143,27 @@ caught before signing.
 ## Identity Registration
 
 Identity registration is delegated to `8004-solana` and mirrors its
-`registerAgent(tokenUri, options)` naming:
+`registerAgent(tokenUri, options)` naming. The same method also accepts a
+metadata object, builds the 8004 registration JSON with
+`buildRegistrationFileJson`, uploads it through the caller-provided
+`uploadJson`, normalizes a bare CID into `ipfs://...`, and registers the
+returned URI:
 
 ```ts
 const identity = new SolanaSDK({ cluster: "devnet", signer });
 const client = new AgentVaultClient({ connection, identity, signer });
-await client.registerAgent("ipfs://...", { collectionPointer });
+
+await client.registerAgent({
+  name: "Trading Agent",
+  description: "Agent with isolated treasury and DeFi wallets",
+  image: "ipfs://...",
+  services,
+  skills,
+  domains,
+}, {
+  collectionPointer,
+  uploadJson: async (json) => await ipfs.addJson(json),
+});
 ```
 
 The returned value normalizes the 8004 response into:
@@ -155,6 +171,8 @@ The returned value normalizes the 8004 response into:
 ```ts
 {
   agentAsset: PublicKey
+  metadataUri?: string
+  metadataJson?: Record<string, unknown>
   result: unknown
 }
 ```
