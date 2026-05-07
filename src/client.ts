@@ -2,7 +2,7 @@ import { AgentVaultIdentitiesClient } from "./identities.js";
 import { AgentVaultWalletsClient } from "./wallets.js";
 import { toPublicKey } from "./codec.js";
 import { AGENT_VAULT_PROGRAM_ID, DEVNET_RELEASE_MANIFEST } from "./constants.js";
-import type { AgentVaultClientConfig } from "./types.js";
+import type { AgentVaultAgentScope, AgentVaultClientConfig, PublicKeyish } from "./types.js";
 
 export class AgentVaultClient {
   readonly identities: AgentVaultIdentitiesClient;
@@ -36,6 +36,14 @@ export class AgentVaultClient {
       ...config,
       releaseManifest: DEVNET_RELEASE_MANIFEST,
     });
+  }
+
+  agent(agentAsset: PublicKeyish): AgentVaultAgentScope {
+    const asset = toPublicKey(agentAsset);
+    return {
+      agentAsset: asset,
+      wallets: this.wallets.for(asset),
+    };
   }
 
 }

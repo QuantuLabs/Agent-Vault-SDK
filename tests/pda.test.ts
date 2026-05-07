@@ -246,8 +246,16 @@ const inferredSetupPreview = await client.wallets.setup(agentAsset, {
   send: false,
   sign: false,
 });
+const agentScope = client.agent(agentAsset);
+const scopedSetupPreview = await agentScope.wallets.setup({
+  labels: ["scoped"],
+  send: false,
+  sign: false,
+});
 
 assert.equal(client.wallets.address(agentAsset, 0).toBase58(), wallet0.toBase58());
+assert.equal(client.wallets.for(agentAsset).address(0).toBase58(), wallet0.toBase58());
+assert.equal(agentScope.agentAsset.toBase58(), agentAsset.toBase58());
 assert.equal(setupPreview.vaultExists, false);
 assert.equal(setupPreview.nextIndex, 0);
 assert.equal(setupPreview.walletAddresses.length, 2);
@@ -257,6 +265,8 @@ assert.equal(setupPreview.instructions[1]?.data[0], AGENT_VAULT_TAGS.createWalle
 assert.equal(setupPreview.instructions[2]?.data[0], AGENT_VAULT_TAGS.createWallet);
 assert.equal(inferredSetupPreview.transaction.feePayer?.toBase58(), holder.toBase58());
 assert.equal(inferredSetupPreview.instructions[0]?.keys[0]?.pubkey.toBase58(), holder.toBase58());
+assert.equal(scopedSetupPreview.transaction.feePayer?.toBase58(), holder.toBase58());
+assert.equal(scopedSetupPreview.instructions[1]?.data[0], AGENT_VAULT_TAGS.createWallet);
 
 const dustedVaultConnection = {
   ...connection,
@@ -362,6 +372,14 @@ assert.equal(deposit.instructions.length, 1);
 assert.equal(deposit.sent, true);
 assert.equal(deposit.signed, true);
 assert.equal(deposit.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
+const scopedDeposit = await agentScope.wallets.fund({
+  wallet: 0,
+  amount: 1_000n,
+  send: false,
+  sign: false,
+});
+assert.equal(scopedDeposit.sent, false);
+assert.equal(scopedDeposit.instruction.data[0], AGENT_VAULT_TAGS.depositSol);
 
 const withdraw = await client.wallets.send(agentAsset, {
   from: 0,
@@ -374,6 +392,14 @@ assert.equal(withdraw.instruction.data[0], AGENT_VAULT_TAGS.withdrawSol);
 assert.equal(withdraw.sent, false);
 assert.equal(withdraw.signed, false);
 assert.equal(withdraw.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
+const scopedWithdraw = await agentScope.wallets.send({
+  from: 0,
+  to: holder,
+  amount: 500n,
+  send: false,
+  sign: false,
+});
+assert.equal(scopedWithdraw.instruction.data[0], AGENT_VAULT_TAGS.withdrawSol);
 
 const tokenTransferPreview = await client.wallets.send(agentAsset, {
   from: 0,
@@ -421,6 +447,14 @@ const createAtaPreview = await client.wallets.token(agentAsset, {
 });
 assert.equal(createAtaPreview.instruction.data[0], AGENT_VAULT_TAGS.createWalletAta);
 assert.equal(createAtaPreview.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
+const scopedAtaPreview = await agentScope.wallets.token({
+  action: "createAta",
+  wallet: 0,
+  mint: agentAsset,
+  send: false,
+  sign: false,
+});
+assert.equal(scopedAtaPreview.instruction.data[0], AGENT_VAULT_TAGS.createWalletAta);
 
 const closeAtaPreview = await client.wallets.token(agentAsset, {
   action: "closeAta",

@@ -117,6 +117,11 @@ export interface WalletOverview {
   nextIndex: number | null;
 }
 
+export interface AgentVaultAgentScope {
+  agentAsset: PublicKey;
+  wallets: AgentVaultScopedWallets;
+}
+
 export interface ListWalletsOptions {
   startIndex?: number;
   limit?: number;
@@ -237,6 +242,19 @@ export type TokenWalletOptions =
 export interface ExecuteWalletOptions extends ExecuteCpiCheckedParams, WalletActionOptions {
   holder?: PublicKeyish;
   wallet: number;
+}
+
+export interface AgentVaultScopedWallets {
+  setup(options?: SetupWalletOptions): Promise<SetupWalletPlan>;
+  list(options?: ListWalletsOptions): Promise<WalletRecord[]>;
+  overview(options?: ListWalletsOptions): Promise<WalletOverview>;
+  get(index: number): Promise<WalletRecord>;
+  address(index: number): PublicKey;
+  ataAddress(index: number, mint: PublicKeyish, tokenProgram?: PublicKeyish): PublicKey;
+  fund(options: FundWalletOptions): Promise<WalletActionPlan>;
+  send(options: SendWalletOptions): Promise<WalletActionPlan>;
+  token(options: TokenWalletOptions): Promise<WalletActionPlan>;
+  execute(options: ExecuteWalletOptions): Promise<WalletActionPlan>;
 }
 
 export interface TransferSplParams {

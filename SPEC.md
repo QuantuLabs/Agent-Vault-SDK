@@ -37,7 +37,20 @@ client.identities.requireIdentitySdk()
 ```
 
 `client.wallets` is the Agent Vault surface. The recommended high-level surface
-has six methods:
+has six methods. Beginner-facing flows should prefer binding the agent once:
+
+```ts
+const agent = client.agent(agentAsset)
+
+agent.wallets.setup({ labels })
+agent.wallets.list({ startIndex, limit, includeClosed })
+agent.wallets.fund({ wallet, amount })
+agent.wallets.send({ from, to, amount, mint })
+agent.wallets.token({ action, wallet, mint, amount })
+agent.wallets.execute({ wallet, targetProgram, targetInstructionData, postCheckData })
+```
+
+The unscoped form remains available for advanced callers:
 
 Target API:
 

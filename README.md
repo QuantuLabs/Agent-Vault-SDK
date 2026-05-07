@@ -31,8 +31,9 @@ const vault = AgentVaultClient.devnet({
 const { agentAsset } = await vault.identities.create({
   uri: "ipfs://...",
 });
+const agent = vault.agent(agentAsset);
 
-const setup = await vault.wallets.setup(agentAsset, {
+const setup = await agent.wallets.setup({
   labels: ["treasury", "trading"],
 });
 
@@ -90,7 +91,19 @@ const { agentAsset } = await vault.identities.create({ uri });
 const [agentAccount] = vault.identities.getAgentAccountPda(agentAsset);
 ```
 
-`vault.wallets` has six high-level methods:
+`vault.agent(agentAsset).wallets` is the recommended beginner surface. It binds
+the agent identity once, so wallet calls do not repeat `agentAsset`:
+
+```ts
+const agent = vault.agent(agentAsset);
+
+await agent.wallets.setup({ labels: ["treasury", "defi"] });
+await agent.wallets.fund({ wallet: 0, amount: 1_000_000n });
+await agent.wallets.send({ from: 0, to: recipient, amount: 500_000n });
+```
+
+`vault.wallets` also exposes the same six high-level methods when you prefer
+passing `agentAsset` per call:
 
 ```ts
 vault.wallets.setup(...)
@@ -106,7 +119,9 @@ vault.wallets.execute(...)
 Create the vault config and multiple wallets in one plan:
 
 ```ts
-const plan = await vault.wallets.setup(agentAsset, {
+const agent = vault.agent(agentAsset);
+
+const plan = await agent.wallets.setup({
   labels: ["treasury", "trading", "ops"],
 });
 
@@ -116,7 +131,7 @@ console.log(plan.signature);
 Add another wallet later with the same setup method:
 
 ```ts
-const plan = await vault.wallets.setup(agentAsset, {
+const plan = await agent.wallets.setup({
   labels: ["defi"],
 });
 
@@ -126,7 +141,7 @@ console.log(plan.walletAddresses[0]?.toBase58(), plan.signature);
 Fund a wallet with SOL:
 
 ```ts
-const deposit = await vault.wallets.fund(agentAsset, {
+const deposit = await agent.wallets.fund({
   wallet: 0,
   amount: 1_000_000n,
 });
@@ -135,13 +150,13 @@ const deposit = await vault.wallets.fund(agentAsset, {
 Send SOL out or between vault wallets:
 
 ```ts
-const withdraw = await vault.wallets.send(agentAsset, {
+const withdraw = await agent.wallets.send({
   from: 0,
   to: recipient,
   amount: 500_000n,
 });
 
-const internal = await vault.wallets.send(agentAsset, {
+const internal = await agent.wallets.send({
   from: 0,
   to: 1,
   amount: 250_000n,
@@ -151,7 +166,7 @@ const internal = await vault.wallets.send(agentAsset, {
 Send SPL / Token-2022 tokens:
 
 ```ts
-const tokenTransfer = await vault.wallets.send(agentAsset, {
+const tokenTransfer = await agent.wallets.send({
   from: 0,
   to: destinationTokenAccount,
   mint,
@@ -164,19 +179,19 @@ Manage token accounts and WSOL:
 ```ts
 import { NATIVE_MINT_ID } from "agent-vault";
 
-const createAta = await vault.wallets.token(agentAsset, {
+const createAta = await agent.wallets.token({
   action: "createAta",
   wallet: 0,
   mint,
 });
 
-const createWsolAta = await vault.wallets.token(agentAsset, {
+const createWsolAta = await agent.wallets.token({
   action: "createAta",
   wallet: 0,
   mint: NATIVE_MINT_ID,
 });
 
-const wrap = await vault.wallets.token(agentAsset, {
+const wrap = await agent.wallets.token({
   action: "wrapSol",
   wallet: 0,
   amount: 1_000_000n,
@@ -186,7 +201,7 @@ const wrap = await vault.wallets.token(agentAsset, {
 Execute a checked CPI for DeFi composition:
 
 ```ts
-const result = await vault.wallets.execute(agentAsset, {
+const result = await agent.wallets.execute({
   wallet: 0,
   targetProgram,
   targetInstructionData,
@@ -215,6 +230,10 @@ const wallets = await vault.wallets.list(agentAsset);
 const address = vault.wallets.address(agentAsset, 0);
 const ata = vault.wallets.ataAddress(agentAsset, 0, mint);
 ```
+
+The scoped equivalents are available as `agent.wallets.get(0)`,
+`agent.wallets.list()`, `agent.wallets.address(0)`, and
+`agent.wallets.ataAddress(0, mint)`.
 
 ## RPC Model
 
@@ -251,6 +270,12 @@ from target-program estimates.
 
 Mainnet writes are intentionally blocked until a canonical mainnet manifest and
 upgrade policy are published.
+
+## Agent Skill
+
+The repo includes [skill/SKILL.md](skill/SKILL.md), a compact AI-agent guide for
+using the SDK with the scoped beginner surface and the expected verification
+commands.
 
 ## Security
 

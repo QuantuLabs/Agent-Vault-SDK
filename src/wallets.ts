@@ -15,6 +15,7 @@ import { executeTransaction } from "./transactions.js";
 import { toPublicKey } from "./codec.js";
 import type {
   AgentVaultReleaseManifest,
+  AgentVaultScopedWallets,
   AgentVaultTransactionSigner,
   BuildTransactionOptions,
   DeploymentVerification,
@@ -76,6 +77,10 @@ export class AgentVaultWalletsClient {
 
   get pdas() {
     return this.instructions.pdas;
+  }
+
+  for(agentAsset: PublicKeyish): AgentVaultScopedWallets {
+    return new ScopedAgentVaultWalletsClient(this, agentAsset);
   }
 
   address(agentAsset: PublicKeyish, index: number): PublicKey {
@@ -704,6 +709,59 @@ export class AgentVaultWalletsClient {
       account: null,
       rawAccount: info,
     };
+  }
+}
+
+class ScopedAgentVaultWalletsClient implements AgentVaultScopedWallets {
+  readonly agentAsset: PublicKey;
+
+  constructor(
+    private readonly wallets: AgentVaultWalletsClient,
+    agentAsset: PublicKeyish,
+  ) {
+    this.agentAsset = toPublicKey(agentAsset);
+  }
+
+  setup(options: SetupWalletOptions = {}): Promise<SetupWalletPlan> {
+    return this.wallets.setup(this.agentAsset, options);
+  }
+
+  list(options: ListWalletsOptions = {}): Promise<WalletRecord[]> {
+    return this.wallets.list(this.agentAsset, options);
+  }
+
+  overview(options: ListWalletsOptions = {}): Promise<WalletOverview> {
+    return this.wallets.overview(this.agentAsset, options);
+  }
+
+  get(index: number): Promise<WalletRecord> {
+    return this.wallets.get(this.agentAsset, index);
+  }
+
+  address(index: number): PublicKey {
+    return this.wallets.address(this.agentAsset, index);
+  }
+
+  ataAddress(index: number, mint: PublicKeyish, tokenProgram?: PublicKeyish): PublicKey {
+    return tokenProgram === undefined
+      ? this.wallets.ataAddress(this.agentAsset, index, mint)
+      : this.wallets.ataAddress(this.agentAsset, index, mint, tokenProgram);
+  }
+
+  fund(options: FundWalletOptions): Promise<WalletActionPlan> {
+    return this.wallets.fund(this.agentAsset, options);
+  }
+
+  send(options: SendWalletOptions): Promise<WalletActionPlan> {
+    return this.wallets.send(this.agentAsset, options);
+  }
+
+  token(options: TokenWalletOptions): Promise<WalletActionPlan> {
+    return this.wallets.token(this.agentAsset, options);
+  }
+
+  execute(options: ExecuteWalletOptions): Promise<WalletActionPlan> {
+    return this.wallets.execute(this.agentAsset, options);
   }
 }
 
