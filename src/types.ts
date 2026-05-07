@@ -185,33 +185,59 @@ export interface WalletActionPlan extends ExecutedVaultTransaction {
   instructions: TransactionInstruction[];
 }
 
-export interface SolAmountOptions {
-  sol?: DecimalAmountInput;
-  lamports?: U64Input;
-  /** @deprecated Use `sol` for app-facing SOL amounts or `lamports` for explicit raw units. */
-  amount?: U64Input;
-}
+export type SolAmountOptions =
+  | {
+      sol: DecimalAmountInput;
+      lamports?: never;
+      /** @deprecated Use `sol` for app-facing SOL amounts or `lamports` for explicit raw units. */
+      amount?: never;
+    }
+  | {
+      sol?: never;
+      lamports: U64Input;
+      /** @deprecated Use `sol` for app-facing SOL amounts or `lamports` for explicit raw units. */
+      amount?: never;
+    }
+  | {
+      sol?: never;
+      lamports?: never;
+      /** @deprecated Use `sol` for app-facing SOL amounts or `lamports` for explicit raw units. */
+      amount: U64Input;
+    };
 
-export interface TokenAmountOptions {
-  tokens?: DecimalAmountInput;
-  baseUnits?: U64Input;
-  /** @deprecated Use `tokens` for app-facing token amounts or `baseUnits` for explicit raw units. */
-  amount?: U64Input;
-}
+export type TokenAmountOptions =
+  | {
+      tokens: DecimalAmountInput;
+      baseUnits?: never;
+      /** @deprecated Use `tokens` for app-facing token amounts or `baseUnits` for explicit raw units. */
+      amount?: never;
+    }
+  | {
+      tokens?: never;
+      baseUnits: U64Input;
+      /** @deprecated Use `tokens` for app-facing token amounts or `baseUnits` for explicit raw units. */
+      amount?: never;
+    }
+  | {
+      tokens?: never;
+      baseUnits?: never;
+      /** @deprecated Use `tokens` for app-facing token amounts or `baseUnits` for explicit raw units. */
+      amount: U64Input;
+    };
 
-export interface FundWalletOptions extends WalletActionOptions, SolAmountOptions {
+export type FundWalletOptions = WalletActionOptions & SolAmountOptions & {
   wallet: number;
   payer?: PublicKeyish;
-}
+};
 
-export interface SolSendWalletOptions extends WalletActionOptions, SolAmountOptions {
+export type SolSendWalletOptions = WalletActionOptions & SolAmountOptions & {
   holder?: PublicKeyish;
   from: number;
   to: number | PublicKeyish;
   mint?: undefined;
-}
+};
 
-export interface TokenSendWalletOptions extends WalletActionOptions, TokenAmountOptions {
+export type TokenSendWalletOptions = WalletActionOptions & TokenAmountOptions & {
   holder?: PublicKeyish;
   from: number;
   to: number | PublicKeyish;
@@ -221,7 +247,7 @@ export interface TokenSendWalletOptions extends WalletActionOptions, TokenAmount
   expectedFee?: U64Input;
   source?: PublicKeyish;
   destination?: PublicKeyish;
-}
+};
 
 export type SendWalletOptions = SolSendWalletOptions | TokenSendWalletOptions;
 
