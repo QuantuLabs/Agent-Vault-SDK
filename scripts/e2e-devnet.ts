@@ -139,7 +139,7 @@ async function main(): Promise<void> {
 
   const uri = `ipfs://agent-vault-sdk-e2e-${Date.now()}`;
   const identityResult = await costs.measure("8004 identity create", "identity", () =>
-    vault.identities.register(uri, { atomEnabled: false })
+    vault.registerAgent(uri, { atomEnabled: false })
   );
   const agentAsset = identityResult.agentAsset;
   console.log(`agent asset: ${agentAsset.toBase58()}`);

@@ -8,31 +8,33 @@ package from `github:QuantuLabs/Agent-Vault-SDK` or a local checkout.
 Description:
 
 ```text
-TypeScript SDK for Agent Vault: 8004 identity creation and multi-wallet PDA management on Solana.
+TypeScript SDK for Agent Vault: 8004 agent registration and multi-wallet PDA management on Solana.
 ```
 
 The SDK is standalone and imports the existing public `8004-solana` package for
-8004 identity creation and registry PDA compatibility.
+8004 agent registration and registry PDA compatibility.
 
 ## Product Surface
 
-The root client exposes two namespaces:
+The root client exposes one agent registration method and two namespaces:
 
 ```ts
+client.registerAgent
 client.identities
 client.wallets
 ```
 
-`client.identities` is the 8004-aware surface. It delegates agent identity
-creation to `8004-solana` and exposes PDA helpers for the 8004 AgentAccount.
+`client.registerAgent(...)` is the single agent creation surface. It delegates
+to `8004-solana` and intentionally mirrors `sdk.registerAgent(tokenUri,
+options)`. `client.identities` only exposes PDA and dependency helpers for the
+8004 AgentAccount.
 
 Target API:
 
 ```ts
 AgentVaultClient.devnet({ connection, identity, signer })
 
-client.identities.register(uri, { atomEnabled, collectionPointer })
-client.identities.registerAgent(uri, { atomEnabled, collectionPointer })
+client.registerAgent(tokenUri, { atomEnabled, collectionPointer })
 client.identities.getAgentAccountPda(agentAsset)
 client.identities.requireIdentitySdk()
 ```
@@ -145,7 +147,7 @@ Identity registration is delegated to `8004-solana` and mirrors its
 ```ts
 const identity = new SolanaSDK({ cluster: "devnet", signer });
 const client = new AgentVaultClient({ connection, identity, signer });
-await client.identities.register("ipfs://...");
+await client.registerAgent("ipfs://...", { collectionPointer });
 ```
 
 The returned value normalizes the 8004 response into:
@@ -157,7 +159,5 @@ The returned value normalizes the 8004 response into:
 }
 ```
 
-If no identity SDK is configured, identity creation fails with an actionable
+If no identity SDK is configured, agent registration fails with an actionable
 error instead of silently building partial transactions.
-
-`client.identities.create(...)` remains as a compatibility alias only.

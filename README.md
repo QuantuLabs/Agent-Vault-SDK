@@ -28,7 +28,7 @@ const vault = AgentVaultClient.devnet({
   signer: wallet,
 });
 
-const { agentAsset } = await vault.identities.register("ipfs://...");
+const { agentAsset } = await vault.registerAgent("ipfs://...");
 const agent = vault.agent(agentAsset);
 
 const setup = await agent.wallets.setup({
@@ -78,15 +78,17 @@ const tx = setup.transaction;
 The root client is intentionally small:
 
 ```ts
+vault.registerAgent
 vault.identities
 vault.wallets
 ```
 
-`vault.identities` delegates identity registration to `8004-solana` and keeps
-the same mental model as `sdk.registerAgent(...)`:
+Agent registration is intentionally the same flow as `8004-solana`:
 
 ```ts
-const { agentAsset } = await vault.identities.register(uri);
+const { agentAsset } = await vault.registerAgent(metadataUri, {
+  collectionPointer: collection.pointer!,
+});
 const [agentAccount] = vault.identities.getAgentAccountPda(agentAsset);
 ```
 

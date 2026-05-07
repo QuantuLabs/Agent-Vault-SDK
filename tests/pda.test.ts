@@ -122,8 +122,8 @@ const failedIdentityClient = AgentVaultClient.devnet({
   },
 });
 await assert.rejects(
-  () => failedIdentityClient.identities.register({ assetPubkey: agentAsset }),
-  /8004 identity creation failed: registry rejected/,
+  () => failedIdentityClient.registerAgent(undefined, { assetPubkey: agentAsset }),
+  /8004 agent registration failed: registry rejected/,
 );
 let registerAgentUri: string | undefined;
 let registerAgentOptions: Record<string, unknown> | undefined;
@@ -139,15 +139,13 @@ const fallbackIdentityClient = AgentVaultClient.devnet({
     },
   },
 });
-const fallbackIdentity = await fallbackIdentityClient.identities.register("ipfs://agent", {
+const fallbackIdentity = await fallbackIdentityClient.registerAgent("ipfs://agent", {
   atomEnabled: true,
   assetPubkey: agentAsset,
 });
 assert.equal(fallbackIdentity.agentAsset.toBase58(), agentAsset.toBase58());
 assert.equal(registerAgentUri, "ipfs://agent");
 assert.equal(registerAgentOptions?.atomEnabled, true);
-const createAliasIdentity = await fallbackIdentityClient.identities.create({ assetPubkey: agentAsset });
-assert.equal(createAliasIdentity.agentAsset.toBase58(), agentAsset.toBase58());
 const strictClient = new AgentVaultClient({
   connection,
   signer: holderSigner,

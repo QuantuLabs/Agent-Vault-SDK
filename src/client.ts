@@ -1,8 +1,17 @@
+import { PublicKey } from "@solana/web3.js";
 import { AgentVaultIdentitiesClient } from "./identities.js";
 import { AgentVaultWalletsClient } from "./wallets.js";
 import { toPublicKey } from "./codec.js";
 import { AGENT_VAULT_PROGRAM_ID, DEVNET_RELEASE_MANIFEST } from "./constants.js";
-import type { AgentVaultAgentScope, AgentVaultClientConfig, PublicKeyish } from "./types.js";
+import type {
+  AgentVaultAgentScope,
+  AgentVaultClientConfig,
+  PublicKeyish,
+  RegisterAgentOptions,
+  RegisterAgentResult,
+} from "./types.js";
+
+type RegisterAgent = (uri?: string, options?: Record<string, unknown>) => Promise<unknown>;
 
 export class AgentVaultClient {
   readonly identities: AgentVaultIdentitiesClient;
@@ -38,6 +47,17 @@ export class AgentVaultClient {
     });
   }
 
+  async registerAgent(tokenUri?: string, options: RegisterAgentOptions = {}): Promise<RegisterAgentResult> {
+    const identity = this.identities.requireIdentitySdk();
+    const registerAgent = identity.registerAgent as RegisterAgent;
+    const result = await registerAgent.call(identity, tokenUri, { ...options });
+    if (isFailedRegistration(result)) {
+      throw new Error(`8004 agent registration failed: ${result.error}`);
+    }
+    const agentAsset = extractAgentAsset(result, options.assetPubkey);
+    return { agentAsset, result };
+  }
+
   agent(agentAsset: PublicKeyish): AgentVaultAgentScope {
     const asset = toPublicKey(agentAsset);
     return {
@@ -50,4 +70,24 @@ export class AgentVaultClient {
 
 export function createAgentVaultClient(config: AgentVaultClientConfig): AgentVaultClient {
   return new AgentVaultClient(config);
+}
+
+function extractAgentAsset(result: unknown, fallback?: PublicKey): PublicKey {
+  if (fallback) {
+    return fallback;
+  }
+  if (result && typeof result === "object" && "asset" in result) {
+    const asset = (result as { asset?: unknown }).asset;
+    if (asset instanceof PublicKey) {
+      return asset;
+    }
+    if (typeof asset === "string") {
+      return new PublicKey(asset);
+    }
+  }
+  throw new Error("8004 agent registration did not return an agent asset pubkey");
+}
+
+function isFailedRegistration(result: unknown): result is { success: false; error: unknown } {
+  return Boolean(result && typeof result === "object" && (result as { success?: unknown }).success === false);
 }

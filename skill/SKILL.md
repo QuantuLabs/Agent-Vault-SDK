@@ -9,7 +9,7 @@ Use the scoped beginner surface first:
 
 ```ts
 const vault = AgentVaultClient.devnet({ connection, identity, signer });
-const { agentAsset } = await vault.identities.register(uri);
+const { agentAsset } = await vault.registerAgent(uri, { collectionPointer });
 const agent = vault.agent(agentAsset);
 ```
 

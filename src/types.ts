@@ -66,20 +66,17 @@ export interface AgentVaultClientConfig {
   allowUnverifiedDeployment?: boolean;
 }
 
-export interface CreateIdentityParams {
-  uri?: string;
+export interface RegisterAgentOptions {
   atomEnabled?: boolean;
   collectionPointer?: string;
   collectionLock?: boolean;
   skipSend?: boolean;
   signer?: PublicKey;
   assetPubkey?: PublicKey;
-  options?: Record<string, unknown>;
+  [option: string]: unknown;
 }
 
-export type RegisterIdentityOptions = Omit<CreateIdentityParams, "uri">;
-
-export interface CreateIdentityResult {
+export interface RegisterAgentResult {
   agentAsset: PublicKey;
   result: unknown;
 }
