@@ -1,5 +1,4 @@
 import { PublicKey } from "@solana/web3.js";
-import { PDAHelpers } from "8004-solana";
 import { AGENT_VAULT_PROGRAM_ID, AGENT_VAULT_SEEDS, ASSOCIATED_TOKEN_PROGRAM_ID } from "./constants.js";
 import { toPublicKey, u16Le } from "./codec.js";
 import type { PublicKeyish } from "./types.js";
@@ -41,7 +40,10 @@ export class AgentVaultPdas {
     if (!this.registryProgram) {
       throw new Error("registryProgram is required to derive an 8004 AgentAccount PDA");
     }
-    return PDAHelpers.getAgentPDA(toPublicKey(agentAsset), this.registryProgram);
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from("agent"), toPublicKey(agentAsset).toBuffer()],
+      this.registryProgram,
+    );
   }
 }
 

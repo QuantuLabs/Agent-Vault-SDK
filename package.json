@@ -1,7 +1,7 @@
 {
   "name": "agent-vault",
   "version": "0.1.0",
-  "description": "TypeScript SDK for Agent Vault: 8004 identity creation and multi-wallet PDA management on Solana.",
+  "description": "TypeScript SDK for Agent Vault: multi-wallet PDA management for 8004 agents on Solana.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,7 +13,10 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/**/*",
+    "dist/*.js",
+    "dist/*.js.map",
+    "dist/*.d.ts",
+    "dist/*.d.ts.map",
     "README.md",
     "SPEC.md",
     "SECURITY.md",
@@ -23,7 +26,7 @@
   ],
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig.scripts.json",
+    "build": "npm run clean && tsc -p tsconfig.json && tsc -p tsconfig.scripts.json",
     "test": "tsx tests/pda.test.ts",
     "e2e:devnet": "node dist/scripts/e2e-devnet.js",
     "pack:dry-run": "npm pack --dry-run",
@@ -55,8 +58,7 @@
     "access": "public"
   },
   "peerDependencies": {
-    "@solana/web3.js": "^1.95.0",
-    "8004-solana": "^0.8.3"
+    "@solana/web3.js": "^1.95.0"
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.14"

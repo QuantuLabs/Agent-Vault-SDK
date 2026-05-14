@@ -3,7 +3,6 @@ export * from "./amounts.js";
 export * from "./client.js";
 export * from "./codec.js";
 export * from "./constants.js";
-export * from "./identities.js";
 export * from "./instructions.js";
 export * from "./pda.js";
 export * from "./transactions.js";

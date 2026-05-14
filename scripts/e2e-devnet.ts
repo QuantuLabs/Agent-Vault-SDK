@@ -116,7 +116,6 @@ async function main(): Promise<void> {
   });
   const vault = AgentVaultClient.devnet({
     connection,
-    identity,
     signer,
     allowUnverifiedDeployment,
   });
@@ -139,9 +138,9 @@ async function main(): Promise<void> {
 
   const uri = `ipfs://agent-vault-sdk-e2e-${Date.now()}`;
   const identityResult = await costs.measure("8004 identity create", "identity", () =>
-    vault.registerAgent(uri, { atomEnabled: false })
+    identity.registerAgent(uri, { atomEnabled: false })
   );
-  const agentAsset = identityResult.agentAsset;
+  const agentAsset = requireRegisteredAsset(identityResult);
   console.log(`agent asset: ${agentAsset.toBase58()}`);
 
   const setupPreview = await vault.wallets.setup(agentAsset, signer.publicKey, {
@@ -792,6 +791,13 @@ async function requireAccount(
   if (options.executable !== undefined && info.executable !== options.executable) {
     throw new Error(`${label} executable mismatch at ${publicKey.toBase58()}`);
   }
+}
+
+function requireRegisteredAsset(result: { asset?: PublicKey }): PublicKey {
+  if (!result.asset) {
+    throw new Error("8004 registration did not return an agent asset");
+  }
+  return result.asset;
 }
 
 async function simulate(connection: Connection, transaction: Transaction, label: string): Promise<void> {

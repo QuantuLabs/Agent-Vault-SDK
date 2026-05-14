@@ -8,11 +8,12 @@ package from `github:QuantuLabs/Agent-Vault-SDK` or a local checkout.
 Description:
 
 ```text
-TypeScript SDK for Agent Vault: 8004 agent registration and multi-wallet PDA management on Solana.
+TypeScript SDK for Agent Vault: multi-wallet PDA management for 8004 agents on Solana.
 ```
 
-The SDK is standalone and imports the existing public `8004-solana` package for
-8004 agent registration and registry PDA compatibility.
+The SDK is focused on Agent Vault wallets. Apps should use the public
+`8004-solana` package for 8004 identity registration, then pass the returned
+Core Asset public key to this SDK as `agentAsset`.
 
 ## DX Contract
 
@@ -36,19 +37,14 @@ raw `lamports` and `baseUnits` are advanced escape hatches.
 
 ## Product Surface
 
-The root client exposes the Agent Vault wallet surface, 8004 PDA helpers, and an
-optional registration convenience wrapper:
+The root client exposes the Agent Vault wallet surface:
 
 ```ts
 client.wallets
-client.identities
-client.registerAgent
 ```
 
 Primary app docs should use `8004-solana` directly for identity registration,
-then pass the returned `asset` to Agent Vault as `agentAsset`. The SDK
-`client.registerAgent(...)` wrapper remains available for integrations that want
-a single client object, but it is not the preferred quickstart path.
+then pass the returned `asset` to Agent Vault as `agentAsset`.
 
 Target identity handoff:
 
@@ -56,9 +52,6 @@ Target identity handoff:
 const registered = await identity.registerAgent(metadataUri, { collectionPointer })
 const client = AgentVaultClient.devnet({ connection, signer })
 const agent = client.agent(registered.asset)
-
-client.identities.getAgentAccountPda(agentAsset)
-client.identities.requireIdentitySdk()
 ```
 
 `client.wallets` is the Agent Vault surface. Beginner-facing flows should prefer binding the agent
@@ -169,7 +162,7 @@ signed writes. Each signed write or signed preview performs a fresh live
 verification so a post-verification ProgramData or global-config mismatch is
 caught before signing.
 
-## Identity Registration
+## Identity Handoff
 
 Identity registration should normally be done directly with `8004-solana`:
 
@@ -181,18 +174,6 @@ const client = AgentVaultClient.devnet({ connection, signer });
 const agent = client.agent(registered.asset);
 ```
 
-The optional `client.registerAgent(...)` wrapper delegates to
-`8004-solana.registerAgent`. It accepts either an existing metadata URI or a
-metadata object plus `uploadJson`, then normalizes the 8004 response into:
-
-```ts
-{
-  agentAsset: PublicKey
-  metadataUri?: string
-  metadataJson?: Record<string, unknown>
-  result: unknown
-}
-```
-
-If no identity SDK is configured, agent registration fails with an actionable
-error instead of silently building partial transactions.
+Agent Vault does not upload metadata, register agents, set collection pointers,
+manage ATOM, or mutate other 8004 identity state. Those flows stay in
+`8004-solana`.

@@ -20,6 +20,9 @@ npm install github:QuantuLabs/Agent-Vault-SDK 8004-solana @solana/web3.js
 # npm install agent-vault 8004-solana @solana/web3.js
 ```
 
+`8004-solana` is only needed by your app to register the agent. Agent Vault
+starts from the returned `agentAsset`.
+
 ## Quickstart
 
 Use `8004-solana` for identity registration, then use Agent Vault for wallets.

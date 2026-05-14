@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Keypair, PublicKey, SystemProgram, type Connection } from "@solana/web3.js";
-import { ServiceType } from "8004-solana";
 import {
   AGENT_VAULT_PROGRAM_ID,
   AGENT_VAULT_TAGS,
@@ -109,72 +108,6 @@ const connection = {
   }),
 } as unknown as Connection;
 const client = AgentVaultClient.devnet({ connection, signer: holderSigner, allowUnverifiedDeployment: true });
-const failedIdentityClient = AgentVaultClient.devnet({
-  connection,
-  signer: holderSigner,
-  allowUnverifiedDeployment: true,
-  identity: {
-    registerAgent: async () => ({ success: false, error: "registry rejected" }),
-  },
-});
-await assert.rejects(
-  () => failedIdentityClient.registerAgent(undefined, { assetPubkey: agentAsset }),
-  /8004 agent registration failed: registry rejected/,
-);
-let registerAgentUri: string | undefined;
-let registerAgentOptions: Record<string, unknown> | undefined;
-const fallbackIdentityClient = AgentVaultClient.devnet({
-  connection,
-  signer: holderSigner,
-  allowUnverifiedDeployment: true,
-  identity: {
-    registerAgent: async (uri?: string, options?: Record<string, unknown>) => {
-      registerAgentUri = uri;
-      registerAgentOptions = options;
-      return { success: true };
-    },
-  },
-});
-const fallbackIdentity = await fallbackIdentityClient.registerAgent("ipfs://agent", {
-  atomEnabled: true,
-  assetPubkey: agentAsset,
-});
-assert.equal(fallbackIdentity.agentAsset.toBase58(), agentAsset.toBase58());
-assert.equal(registerAgentUri, "ipfs://agent");
-assert.equal(registerAgentOptions?.atomEnabled, true);
-let uploadedMetadataJson: Record<string, unknown> | null = null;
-registerAgentUri = undefined;
-registerAgentOptions = undefined;
-const metadataIdentity = await fallbackIdentityClient.registerAgent({
-  name: "Vault Agent",
-  description: "Agent Vault SDK metadata flow",
-  image: "ipfs://agent-image",
-  services: [{ type: ServiceType.MCP, value: "https://agent.example/mcp" }],
-  skills: ["natural_language_processing/natural_language_generation/text_completion"],
-  domains: ["technology/software_engineering/software_engineering"],
-}, {
-  assetPubkey: agentAsset,
-  collectionPointer: "c1:vault",
-  uploadJson: async (metadataJson) => {
-    uploadedMetadataJson = metadataJson;
-    return "bafy-agent-metadata";
-  },
-});
-assert.equal(metadataIdentity.agentAsset.toBase58(), agentAsset.toBase58());
-assert.equal(metadataIdentity.metadataUri, "ipfs://bafy-agent-metadata");
-assert.equal(registerAgentUri, "ipfs://bafy-agent-metadata");
-assert.equal(registerAgentOptions?.collectionPointer, "c1:vault");
-assert.equal("uploadJson" in (registerAgentOptions ?? {}), false);
-assert.equal(uploadedMetadataJson?.name, "Vault Agent");
-assert.equal(metadataIdentity.metadataJson?.name, "Vault Agent");
-await assert.rejects(
-  () => fallbackIdentityClient.registerAgent({
-    name: "Missing Uploader",
-    description: "Should fail before registration",
-    services: [],
-  }, { assetPubkey: agentAsset }),
-  /requires options\.uploadJson/,
-);
 const strictClient = new AgentVaultClient({
   connection,
   signer: holderSigner,
