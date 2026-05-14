@@ -63,68 +63,16 @@ Agent Vault does not register agents. Register with `8004-solana`, then pass the
 returned `asset` to Agent Vault as `agentAsset`.
 
 ```ts
-import {
-  IPFSClient,
-  ServiceType,
-  SolanaSDK,
-  buildRegistrationFileJson,
-} from "8004-solana";
+import { SolanaSDK } from "8004-solana";
 
-const pinataJwt = process.env.PINATA_JWT;
-const ipfs = pinataJwt
-  ? new IPFSClient({ pinataEnabled: true, pinataJwt })
-  : new IPFSClient({ url: "http://localhost:5001" });
-
-const identity = new SolanaSDK({
-  cluster: "devnet",
-  signer: wallet,
-  ipfsClient: ipfs,
-});
-
-const collection = await identity.createCollection({
-  name: "CasterCorp Agents",
-  symbol: "CAST",
-  description: "Main collection for CasterCorp agents",
-  image: "ipfs://QmCollectionImage...",
-  banner_image: "ipfs://QmCollectionBanner...",
-});
-
-const collectionPointer = collection.pointer!;
-
-const metadataJson = buildRegistrationFileJson({
-  name: "Trading Agent",
-  description: "Agent with isolated vault wallets",
-  image: "ipfs://...",
-  services: [
-    { type: ServiceType.MCP, value: "https://api.example.com/mcp" },
-  ],
-  skills: ["natural_language_processing/natural_language_generation/text_completion"],
-  domains: ["technology/software_engineering/software_engineering"],
-});
-
-const metadataUri = `ipfs://${await ipfs.addJson(metadataJson)}`;
-const registered = await identity.registerAgent(metadataUri, {
-  collectionPointer,
-});
-
+const identity = new SolanaSDK({ cluster: "devnet", signer: wallet });
+const registered = await identity.registerAgent("ipfs://your-agent-metadata");
 const agentAsset = registered.asset;
 ```
 
-`collectionPointer` is the pointer returned by your 8004 collection flow, for
-example `c1:...`. `registerAgent()` does not initialize ATOM stats by default;
-pass `{ atomEnabled: true }` only if you want ATOM enabled at registration.
-
-If your collection and metadata are already uploaded, pass their existing values
-directly:
-
-```ts
-const registered = await identity.registerAgent("ipfs://...", {
-  collectionPointer: "c1:...",
-});
-const agentAsset = registered.asset;
-```
-
-More details: [8004-solana README](https://github.com/QuantuLabs/8004-solana-ts#readme).
+Your metadata URI must already be uploaded. For metadata building, IPFS upload,
+collection pointers, or ATOM options, use the
+[8004-solana README](https://github.com/QuantuLabs/8004-solana-ts#readme).
 
 For app code, prefer the scoped API:
 
