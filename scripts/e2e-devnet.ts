@@ -31,6 +31,7 @@ import {
   VAULT_CONFIG_LENGTH,
   WALLET_LENGTH,
   executeTransaction,
+  type WalletRecord,
 } from "agent-vault";
 
 const DEFAULT_RPC_URL = "https://api.devnet.solana.com";
@@ -43,7 +44,6 @@ const EXPECTED_COVERAGE = new Map<number, string>([
   [AGENT_VAULT_TAGS.initVaultConfig, "init_vault_config"],
   [AGENT_VAULT_TAGS.createWallet, "create_wallet"],
   [AGENT_VAULT_TAGS.updateWalletLabel, "update_wallet_label"],
-  [AGENT_VAULT_TAGS.depositSol, "deposit_sol"],
   [AGENT_VAULT_TAGS.withdrawSol, "withdraw_sol"],
   [AGENT_VAULT_TAGS.transferSol, "transfer_sol"],
   [AGENT_VAULT_TAGS.closeWallet, "close_wallet"],
@@ -178,25 +178,16 @@ async function main(): Promise<void> {
     vault.wallets.instructions.updateWalletLabel(agentAsset, signer.publicKey, 1, "router"),
   ], AGENT_VAULT_TAGS.updateWalletLabel);
 
-  const fundPreview = await vault.wallets.fund(agentAsset, {
-    wallet: 0,
-    payer: signer.publicKey,
-    sol: "0.00002",
-    send: false,
-    allowUnverifiedDeployment,
-  });
-  await simulate(connection, fundPreview.transaction, "wallets.fund");
-  const fund = await costs.measure("deposit_sol", "agent_vault", () =>
-    vault.wallets.fund(agentAsset, {
-      wallet: 0,
-      payer: signer.publicKey,
-      sol: "0.00002",
-      allowUnverifiedDeployment,
-    })
-  );
-  coverage.add(AGENT_VAULT_TAGS.depositSol);
-  assert.ok(fund.signature, "fund signature missing");
-  console.log(`fund: ${fund.signature}`);
+  const treasuryWallet = requireListedWallet(wallets[0], "treasury wallet");
+  await sendInstructions(connection, signer, coverage, costs, "aux", "direct SOL transfer to treasury wallet", [
+    SystemProgram.transfer({
+      fromPubkey: signer.publicKey,
+      toPubkey: treasuryWallet.address,
+      lamports: 20_000,
+    }),
+  ], null);
+  const fundedTreasury = await vault.wallets.get(agentAsset, treasuryWallet.index);
+  assert.ok(fundedTreasury.lamports >= 20_000, "treasury wallet did not receive direct SOL funding");
 
   const internalPreview = await vault.wallets.send(agentAsset, {
     holder: signer.publicKey,
@@ -253,7 +244,7 @@ async function main(): Promise<void> {
   assert.equal(overview.wallets[4]?.dataStatus, "recovery");
   assertFullCoverage(coverage, verifiedCoverage);
   costs.print();
-  console.log("devnet e2e completed with Agent Vault instruction coverage via SDK");
+  console.log("devnet e2e completed with Agent Vault SDK flows");
 }
 
 async function initializeGlobalConfig(
@@ -400,21 +391,13 @@ async function runWsolFlow(
   coverage: Set<number>,
   costs: CostTracker,
 ): Promise<void> {
-  const fundWsol = await vault.wallets.fund(agentAsset, {
-    wallet: 3,
-    payer: signer.publicKey,
-    sol: "0.00005",
-    send: false,
-  });
-  await simulate(connection, fundWsol.transaction, "wallets.fund wsol");
-  const fundWsolSent = await costs.measure("deposit_sol wsol wallet", "agent_vault", () =>
-    vault.wallets.fund(agentAsset, {
-      wallet: 3,
-      payer: signer.publicKey,
-      sol: "0.00005",
-    })
-  );
-  assert.ok(fundWsolSent.signature, "fund WSOL wallet signature missing");
+  await sendInstructions(connection, signer, coverage, costs, "aux", "direct SOL transfer to wsol wallet", [
+    SystemProgram.transfer({
+      fromPubkey: signer.publicKey,
+      toPubkey: vault.wallets.address(agentAsset, 3),
+      lamports: 50_000,
+    }),
+  ], null);
 
   const createWsolAta = await vault.wallets.token(agentAsset, {
     action: "createAta",
@@ -770,7 +753,7 @@ function assertFullCoverage(coverage: Set<number>, verifiedCoverage: Set<number>
   if (missing.length > 0) {
     throw new Error(`missing Agent Vault instruction coverage: ${missing.join(", ")}`);
   }
-  console.log("covered Agent Vault instructions:");
+  console.log("covered Agent Vault SDK flow instructions:");
   for (const [tag, name] of EXPECTED_COVERAGE.entries()) {
     const status = coverage.has(tag) ? "sent" : "verified";
     console.log(`  ${tag}: ${name} (${status})`);
@@ -798,6 +781,13 @@ function requireRegisteredAsset(result: { asset?: PublicKey }): PublicKey {
     throw new Error("8004 registration did not return an agent asset");
   }
   return result.asset;
+}
+
+function requireListedWallet(wallet: WalletRecord | undefined, label: string): WalletRecord {
+  if (!wallet) {
+    throw new Error(`missing ${label}`);
+  }
+  return wallet;
 }
 
 async function simulate(connection: Connection, transaction: Transaction, label: string): Promise<void> {

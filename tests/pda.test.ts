@@ -334,25 +334,26 @@ assert.equal(setup.confirmation?.value.err, null);
 assert.equal(setup.signers[0]?.toBase58(), holder.toBase58());
 
 await assert.rejects(
-  () => strictClient.wallets.fund(agentAsset, {
-    wallet: 0,
-    payer: holder,
-    amount: 1n,
+  () => strictClient.wallets.send(agentAsset, {
+    from: 0,
+    to: holder,
+    lamports: 1n,
   }),
   /candidate-not-deployed/,
 );
 await assert.rejects(
-  () => strictClient.wallets.fund(agentAsset, {
-    wallet: 0,
-    payer: holder,
-    amount: 1n,
+  () => strictClient.wallets.send(agentAsset, {
+    from: 0,
+    to: holder,
+    lamports: 1n,
     send: false,
   }),
   /candidate-not-deployed/,
 );
-const strictUnsignedPreview = await strictClient.wallets.fund(agentAsset, {
-  wallet: 0,
-  amount: 1n,
+const strictUnsignedPreview = await strictClient.wallets.send(agentAsset, {
+  from: 0,
+  to: holder,
+  lamports: 1n,
   send: false,
   sign: false,
 });
@@ -364,23 +365,26 @@ const noSignerClient = AgentVaultClient.devnet({
   allowUnverifiedDeployment: true,
 });
 await assert.rejects(
-  () => noSignerClient.wallets.fund(agentAsset, {
-    wallet: 0,
-    amount: 1n,
+  () => noSignerClient.wallets.send(agentAsset, {
+    from: 0,
+    to: holder,
+    lamports: 1n,
     send: false,
     sign: false,
   }),
-  /payer is required/,
+  /holder is required/,
 );
-const externalUnsignedDeposit = await noSignerClient.wallets.fund(agentAsset, {
-  wallet: 0,
-  amount: 1n,
+const externalUnsignedWithdraw = await noSignerClient.wallets.send(agentAsset, {
+  holder,
+  from: 0,
+  to: holder,
+  lamports: 1n,
   feePayer: holder,
   send: false,
   sign: false,
 });
-assert.equal(externalUnsignedDeposit.transaction.feePayer?.toBase58(), holder.toBase58());
-assert.equal(externalUnsignedDeposit.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
+assert.equal(externalUnsignedWithdraw.transaction.feePayer?.toBase58(), holder.toBase58());
+assert.equal(externalUnsignedWithdraw.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
 
 const unsignedSetup = await client.wallets.setup(agentAsset, holder, {
   labels: ["unsigned"],
@@ -394,24 +398,11 @@ assert.equal(unsignedSetup.signature, null);
 assert.equal(setupPreview.transaction.feePayer?.toBase58(), holder.toBase58());
 assert.equal(setupPreview.transaction.instructions.length, setupPreview.instructions.length);
 
-const deposit = await client.wallets.fund(agentAsset, {
-  wallet: 0,
-  sol: "0.000001",
-});
-assert.equal(deposit.instruction.data[0], AGENT_VAULT_TAGS.depositSol);
-assert.equal(deposit.instruction.data.readBigUInt64LE(1), 1_000n);
-assert.equal(deposit.instructions.length, 1);
-assert.equal(deposit.sent, true);
-assert.equal(deposit.signed, true);
-assert.equal(deposit.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
-const scopedDeposit = await agentScope.wallets.fund({
-  wallet: 0,
-  sol: 0.000001,
-  send: false,
-  sign: false,
-});
-assert.equal(scopedDeposit.sent, false);
-assert.equal(scopedDeposit.instruction.data[0], AGENT_VAULT_TAGS.depositSol);
+const depositInstruction = client.wallets.instructions.depositSol(agentAsset, 0, holder, 1_000n);
+assert.equal(depositInstruction.data[0], AGENT_VAULT_TAGS.depositSol);
+assert.equal(depositInstruction.data.readBigUInt64LE(1), 1_000n);
+assert.equal(depositInstruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
+assert.equal(depositInstruction.keys[1]?.pubkey.toBase58(), wallet0.toBase58());
 
 const withdraw = await client.wallets.send(agentAsset, {
   from: 0,
@@ -585,10 +576,10 @@ const failedClient = AgentVaultClient.devnet({
   allowUnverifiedDeployment: true,
 });
 await assert.rejects(
-  () => failedClient.wallets.fund(agentAsset, {
-    wallet: 0,
-    payer: holder,
-    amount: 1n,
+  () => failedClient.wallets.send(agentAsset, {
+    from: 0,
+    to: holder,
+    lamports: 1n,
   }),
   /failed confirmation/,
 );
@@ -641,10 +632,10 @@ assert.equal(verification.ok, true);
 assert.equal(verification.status, "verified");
 liveElfBytes = Buffer.from(elfBytes);
 
-const verifiedPreview = await verifiedClient.wallets.fund(agentAsset, {
-  wallet: 0,
-  payer: holder,
-  amount: 1n,
+const verifiedPreview = await verifiedClient.wallets.send(agentAsset, {
+  from: 0,
+  to: holder,
+  lamports: 1n,
   send: false,
 });
 assert.equal(verifiedPreview.sent, false);
@@ -654,10 +645,10 @@ await verifiedClient.wallets.verifyDeployment();
 liveElfBytes = Buffer.from(elfBytes);
 liveElfBytes[0] = (liveElfBytes[0] ?? 0) ^ 1;
 await assert.rejects(
-  () => verifiedClient.wallets.fund(agentAsset, {
-    wallet: 0,
-    payer: holder,
-    amount: 1n,
+  () => verifiedClient.wallets.send(agentAsset, {
+    from: 0,
+    to: holder,
+    lamports: 1n,
     send: false,
   }),
   /deployment verification failed: program data sha256 mismatch/,
@@ -670,10 +661,10 @@ const missingDeploymentClient = new AgentVaultClient({
   signer: holderSigner,
 });
 await assert.rejects(
-  () => missingDeploymentClient.wallets.fund(agentAsset, {
-    wallet: 0,
-    payer: holder,
-    amount: 1n,
+  () => missingDeploymentClient.wallets.send(agentAsset, {
+    from: 0,
+    to: holder,
+    lamports: 1n,
     send: false,
   }),
   /deployment verification failed: program missing/,
@@ -689,18 +680,18 @@ const unsafeMainnetClient = new AgentVaultClient({
   allowUnverifiedDeployment: true,
 });
 await assert.rejects(
-  () => unsafeMainnetClient.wallets.fund(agentAsset, {
-    wallet: 0,
-    payer: holder,
-    amount: 1n,
+  () => unsafeMainnetClient.wallets.send(agentAsset, {
+    from: 0,
+    to: holder,
+    lamports: 1n,
     send: false,
   }),
   /mainnet writes require canonical deployment verification/,
 );
-const unsafeMainnetUnsignedPreview = await unsafeMainnetClient.wallets.fund(agentAsset, {
-  wallet: 0,
-  payer: holder,
-  amount: 1n,
+const unsafeMainnetUnsignedPreview = await unsafeMainnetClient.wallets.send(agentAsset, {
+  from: 0,
+  to: holder,
+  lamports: 1n,
   send: false,
   sign: false,
 });
@@ -716,10 +707,10 @@ const realMainnetRpcClient = AgentVaultClient.devnet({
   allowUnverifiedDeployment: true,
 });
 await assert.rejects(
-  () => realMainnetRpcClient.wallets.fund(agentAsset, {
-    wallet: 0,
-    payer: holder,
-    amount: 1n,
+  () => realMainnetRpcClient.wallets.send(agentAsset, {
+    from: 0,
+    to: holder,
+    lamports: 1n,
     send: false,
   }),
   /mainnet writes require canonical deployment verification/,

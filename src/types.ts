@@ -209,11 +209,6 @@ export type TokenAmountOptions =
       amount: U64Input;
     };
 
-export type FundWalletOptions = WalletActionOptions & SolAmountOptions & {
-  wallet: number;
-  payer?: PublicKeyish;
-};
-
 export type SolSendWalletOptions = WalletActionOptions & SolAmountOptions & {
   holder?: PublicKeyish;
   from: number;
@@ -275,7 +270,6 @@ export interface AgentVaultScopedWallets {
   get(index: number): Promise<WalletRecord>;
   address(index: number): PublicKey;
   ataAddress(index: number, mint: PublicKeyish, tokenProgram?: PublicKeyish): PublicKey;
-  fund(options: FundWalletOptions): Promise<WalletActionPlan>;
   send(options: SendWalletOptions): Promise<WalletActionPlan>;
   token(options: TokenWalletOptions): Promise<WalletActionPlan>;
   execute(options: ExecuteWalletOptions): Promise<WalletActionPlan>;

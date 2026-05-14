@@ -21,7 +21,7 @@ The SDK should let `8004-solana` own identity registration and make the Agent
 Vault wallet path short and hard to misuse:
 
 ```ts
-const registered = await identity.registerAgent(metadataUri, { collectionPointer })
+const registered = await identity.registerAgent(metadataUri)
 const vault = AgentVaultClient.devnet({ connection, signer })
 const agentAsset = registered.asset
 const agent = vault.agent(agentAsset)
@@ -48,7 +48,7 @@ then pass the returned `asset` to Agent Vault as `agentAsset`.
 Target identity handoff:
 
 ```ts
-const registered = await identity.registerAgent(metadataUri, { collectionPointer })
+const registered = await identity.registerAgent(metadataUri)
 const client = AgentVaultClient.devnet({ connection, signer })
 const agent = client.agent(registered.asset)
 ```
@@ -165,7 +165,7 @@ Identity registration should normally be done directly with `8004-solana`:
 
 ```ts
 const identity = new SolanaSDK({ cluster: "devnet", signer });
-const registered = await identity.registerAgent(metadataUri, { collectionPointer });
+const registered = await identity.registerAgent(metadataUri);
 
 const client = AgentVaultClient.devnet({ connection, signer });
 const agent = client.agent(registered.asset);

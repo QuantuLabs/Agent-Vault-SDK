@@ -8,7 +8,7 @@ description: Use when building with the Agent Vault TypeScript SDK, wiring 8004 
 Use the scoped beginner surface first:
 
 ```ts
-const registered = await identity.registerAgent(metadataUri, { collectionPointer });
+const registered = await identity.registerAgent(metadataUri);
 const vault = AgentVaultClient.devnet({ connection, signer });
 const agentAsset = registered.asset;
 const agent = vault.agent(agentAsset);

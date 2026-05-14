@@ -23,7 +23,6 @@ import type {
   DeploymentVerification,
   ExecuteWalletOptions,
   ExecuteCpiCheckedParams,
-  FundWalletOptions,
   ListAllWalletsOptions,
   ListWalletsOptions,
   PublicKeyish,
@@ -216,19 +215,6 @@ export class AgentVaultWalletsClient {
       ...setup,
       ...prepared,
     };
-  }
-
-  async fund(
-    agentAsset: PublicKeyish,
-    options: FundWalletOptions,
-  ): Promise<WalletActionPlan> {
-    const payer = this.resolveActor("payer", options.payer, options);
-    const amount = resolveSolAmount(options, "fund amount");
-    return this.prepareAction(
-      this.instructions.depositSol(agentAsset, options.wallet, payer, amount),
-      payer,
-      options,
-    );
   }
 
   async send(agentAsset: PublicKeyish, options: SendWalletOptions): Promise<WalletActionPlan> {
@@ -534,7 +520,7 @@ export class AgentVaultWalletsClient {
   }
 
   private resolveActor(
-    label: "holder" | "payer",
+    label: "holder",
     explicit: PublicKeyish | undefined,
     options: WalletActionOptions,
   ): PublicKey {
@@ -768,10 +754,6 @@ class ScopedAgentVaultWalletsClient implements AgentVaultScopedWallets {
     return tokenProgram === undefined
       ? this.wallets.ataAddress(this.agentAsset, index, mint)
       : this.wallets.ataAddress(this.agentAsset, index, mint, tokenProgram);
-  }
-
-  fund(options: FundWalletOptions): Promise<WalletActionPlan> {
-    return this.wallets.fund(this.agentAsset, options);
   }
 
   send(options: SendWalletOptions): Promise<WalletActionPlan> {

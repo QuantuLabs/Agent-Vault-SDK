@@ -169,6 +169,7 @@ or backend transfer. List wallets first, then use the address for deposits.
 ```ts
 const wallets = await agent.wallets.listAll();
 const treasury = wallets[0];
+if (!treasury) throw new Error("treasury wallet missing");
 
 console.log("SOL deposit address:", treasury.address.toBase58());
 ```
