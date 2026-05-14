@@ -2,7 +2,7 @@
 
 ## Package
 
-The npm package name is `agent-vault`. Until npm publication, consume the WIP
+The npm package name is `agent-vault`. Until npm publication, consume the
 package from `github:QuantuLabs/Agent-Vault-SDK` or a local checkout.
 
 Description:
@@ -16,11 +16,13 @@ The SDK is standalone and imports the existing public `8004-solana` package for
 
 ## DX Contract
 
-The SDK should make the common path short and hard to misuse:
+The SDK should let `8004-solana` own identity registration and make the Agent
+Vault wallet path short and hard to misuse:
 
 ```ts
-const vault = AgentVaultClient.devnet({ connection, identity, signer })
-const { agentAsset } = await vault.registerAgent(metadata, { collectionPointer, uploadJson })
+const registered = await identity.registerAgent(metadataUri, { collectionPointer })
+const vault = AgentVaultClient.devnet({ connection, signer })
+const agentAsset = registered.asset
 const agent = vault.agent(agentAsset)
 
 await agent.wallets.setup({ labels: ["treasury", "defi"] })
@@ -34,26 +36,27 @@ raw `lamports` and `baseUnits` are advanced escape hatches.
 
 ## Product Surface
 
-The root client exposes one agent registration method and two namespaces:
+The root client exposes the Agent Vault wallet surface, 8004 PDA helpers, and an
+optional registration convenience wrapper:
 
 ```ts
-client.registerAgent
-client.identities
 client.wallets
+client.identities
+client.registerAgent
 ```
 
-`client.registerAgent(...)` is the single agent creation surface. It delegates
-to `8004-solana` and intentionally mirrors `sdk.registerAgent(tokenUri,
-options)`. `client.identities` only exposes PDA and dependency helpers for the
-8004 AgentAccount.
+Primary app docs should use `8004-solana` directly for identity registration,
+then pass the returned `asset` to Agent Vault as `agentAsset`. The SDK
+`client.registerAgent(...)` wrapper remains available for integrations that want
+a single client object, but it is not the preferred quickstart path.
 
-Target API:
+Target identity handoff:
 
 ```ts
-AgentVaultClient.devnet({ connection, identity, signer })
+const registered = await identity.registerAgent(metadataUri, { collectionPointer })
+const client = AgentVaultClient.devnet({ connection, signer })
+const agent = client.agent(registered.asset)
 
-client.registerAgent(tokenUri, { atomEnabled, collectionPointer })
-client.registerAgent(metadata, { uploadJson, atomEnabled, collectionPointer })
 client.identities.getAgentAccountPda(agentAsset)
 client.identities.requireIdentitySdk()
 ```
@@ -168,31 +171,19 @@ caught before signing.
 
 ## Identity Registration
 
-Identity registration is delegated to `8004-solana` and mirrors its
-`registerAgent(tokenUri, options)` naming. The same method also accepts a
-metadata object, builds the 8004 registration JSON with
-`buildRegistrationFileJson`, uploads it through the caller-provided
-`uploadJson`, normalizes a bare CID into `ipfs://...`, and registers the
-returned URI:
+Identity registration should normally be done directly with `8004-solana`:
 
 ```ts
 const identity = new SolanaSDK({ cluster: "devnet", signer });
-const client = new AgentVaultClient({ connection, identity, signer });
+const registered = await identity.registerAgent(metadataUri, { collectionPointer });
 
-await client.registerAgent({
-  name: "Trading Agent",
-  description: "Agent with isolated treasury and DeFi wallets",
-  image: "ipfs://...",
-  services,
-  skills,
-  domains,
-}, {
-  collectionPointer,
-  uploadJson: async (json) => await ipfs.addJson(json),
-});
+const client = AgentVaultClient.devnet({ connection, signer });
+const agent = client.agent(registered.asset);
 ```
 
-The returned value normalizes the 8004 response into:
+The optional `client.registerAgent(...)` wrapper delegates to
+`8004-solana.registerAgent`. It accepts either an existing metadata URI or a
+metadata object plus `uploadJson`, then normalizes the 8004 response into:
 
 ```ts
 {

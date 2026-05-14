@@ -2,10 +2,9 @@
 
 ## Status
 
-Agent Vault SDK is a work in progress devnet candidate SDK. It is intended for
-testing the current Agent Vault devnet deployment and should not be used with
-valuable assets until a mainnet release and production security review are
-published.
+Agent Vault SDK targets the current Agent Vault devnet version. It should not be
+used with valuable assets until a mainnet release and production security review
+are published.
 
 ## Reporting Vulnerabilities
 

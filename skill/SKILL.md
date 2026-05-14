@@ -8,8 +8,9 @@ description: Use when building with the Agent Vault TypeScript SDK, wiring 8004 
 Use the scoped beginner surface first:
 
 ```ts
-const vault = AgentVaultClient.devnet({ connection, identity, signer });
-const { agentAsset } = await vault.registerAgent(metadata, { collectionPointer, uploadJson });
+const registered = await identity.registerAgent(metadataUri, { collectionPointer });
+const vault = AgentVaultClient.devnet({ connection, signer });
+const agentAsset = registered.asset;
 const agent = vault.agent(agentAsset);
 ```
 
@@ -38,7 +39,7 @@ await agent.wallets.token({ action: "wrapSol", wallet: 0, sol: "0.001" });
 - `payer` is inferred from `client.signer.publicKey`.
 - `agentAsset` is the 8004 Core Asset pubkey; `wallet` is the numeric wallet index (`0`, `1`, etc.), not the wallet PDA address.
 - Use `agent.wallets.listAll()` to enumerate all wallet indexes for one agent; use `list({ startIndex, limit })` for paginated UI.
-- `registerAgent(metadata, { uploadJson })` builds 8004 metadata JSON and registers the returned URI; `uploadJson` may return a full URI or a bare IPFS CID.
+- Use `8004-solana` for identity registration; Agent Vault starts from the returned `asset`.
 - Use `sol` and `tokens` in app-facing code. Raw `lamports`, `baseUnits`, or deprecated `amount` are advanced-only.
 - Token transfers infer mint decimals when `decimals` is omitted.
 - Token-2022 transfers can infer `expectedFee` from the mint.

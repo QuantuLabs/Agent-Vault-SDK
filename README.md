@@ -1,10 +1,14 @@
 # Agent Vault SDK
 
-TypeScript SDK for registering 8004 agents and managing their Agent Vault PDA
-wallets on Solana.
+TypeScript SDK for managing Agent Vault PDA wallets for 8004 agents on Solana.
 
-WIP devnet candidate. Do not use with valuable assets until a mainnet release is
-published.
+Devnet version.
+
+```text
+Program ID: 36u7KMBuxjExvU6V2nfTX5SnNdYMGUupFiYouLzrgpfW
+```
+
+There is no mainnet release yet. Do not use with valuable assets.
 
 ## Install
 
@@ -18,36 +22,36 @@ npm install github:QuantuLabs/Agent-Vault-SDK 8004-solana @solana/web3.js
 
 ## Quickstart
 
-You provide the wallet signer, an 8004 collection pointer, and a JSON uploader.
+Use `8004-solana` for identity registration, then use Agent Vault for wallets.
 `wallet` is the Solana signer you already use in your script or app, with a
 `publicKey` and signing support.
 
 ```ts
 import { Connection } from "@solana/web3.js";
-import { SolanaSDK } from "8004-solana";
+import { buildRegistrationFileJson, SolanaSDK } from "8004-solana";
 import { AgentVaultClient } from "agent-vault";
 
-const metadata = {
+const metadataJson = buildRegistrationFileJson({
   name: "Trading Agent",
   description: "Agent with isolated vault wallets",
   image: "ipfs://...",
   services: [],
   skills: [],
   domains: [],
-};
+});
+const metadataUri = await uploadJson(metadataJson);
 
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 const identity = new SolanaSDK({ cluster: "devnet", signer: wallet });
 
+const registered = await identity.registerAgent(metadataUri, {
+  collectionPointer,
+});
+const agentAsset = registered.asset;
+
 const vault = AgentVaultClient.devnet({
   connection,
-  identity,
   signer: wallet,
-});
-
-const { agentAsset } = await vault.registerAgent(metadata, {
-  collectionPointer,
-  uploadJson,
 });
 
 const agent = vault.agent(agentAsset);
@@ -55,6 +59,7 @@ const agent = vault.agent(agentAsset);
 await agent.wallets.setup({ labels: ["treasury", "trading"] });
 
 const wallets = await agent.wallets.listAll();
+console.log(wallets.map((wallet) => [wallet.index, wallet.address.toBase58()]));
 
 await agent.wallets.fund({ wallet: 0, sol: "0.001" });
 await agent.wallets.send({ from: 0, to: recipient, sol: "0.0005" });
@@ -62,15 +67,16 @@ await agent.wallets.send({ from: 0, to: recipient, sol: "0.0005" });
 
 `collectionPointer` is the pointer returned by your 8004 collection flow, for
 example `c1:...`. `uploadJson` must upload the metadata JSON and return an
-`ipfs://...` URI, HTTPS URI, or bare IPFS CID. `recipient` is an external Solana
-public key.
+`ipfs://...` or HTTPS URI. `recipient` is an external Solana public key.
 
-If the metadata is already uploaded, pass its URI directly:
+If the metadata is already uploaded, skip `buildRegistrationFileJson` and pass
+the URI directly to `8004-solana`:
 
 ```ts
-const { agentAsset } = await vault.registerAgent("ipfs://...", {
+const registered = await identity.registerAgent("ipfs://...", {
   collectionPointer,
 });
+const agentAsset = registered.asset;
 ```
 
 For app code, prefer the scoped API:
@@ -157,6 +163,7 @@ Return a transaction without signing or sending:
 ```ts
 const plan = await agent.wallets.setup({
   labels: ["treasury"],
+  feePayer: wallet.publicKey,
   send: false,
   sign: false,
 });
@@ -165,6 +172,7 @@ const tx = plan.transaction;
 ```
 
 The same `send: false` / `sign: false` options work on wallet write methods.
+Pass `holder` too when the fee payer is not the Core Asset owner.
 
 ## Deployment Safety
 
