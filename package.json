@@ -1,5 +1,5 @@
 {
-  "name": "agent-vault",
+  "name": "@quantulabs/agent-vault",
   "version": "0.1.0",
   "description": "TypeScript SDK for Agent Vault: multi-wallet PDA management for 8004 agents on Solana.",
   "type": "module",
@@ -20,9 +20,7 @@
     "dist/scripts/*.js",
     "dist/scripts/*.js.map",
     "README.md",
-    "SPEC.md",
     "SECURITY.md",
-    "skill/SKILL.md",
     "LICENSE",
     "package.json"
   ],

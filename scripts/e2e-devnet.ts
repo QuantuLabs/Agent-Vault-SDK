@@ -32,7 +32,7 @@ import {
   WALLET_LENGTH,
   executeTransaction,
   type WalletRecord,
-} from "agent-vault";
+} from "@quantulabs/agent-vault";
 
 const DEFAULT_RPC_URL = "https://api.devnet.solana.com";
 const MIN_BALANCE_LAMPORTS = 200_000_000;

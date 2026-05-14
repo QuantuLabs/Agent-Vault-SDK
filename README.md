@@ -17,7 +17,7 @@ Requires Node.js 18+.
 ```bash
 npm install github:QuantuLabs/Agent-Vault-SDK 8004-solana @solana/web3.js
 # After npm publication:
-# npm install agent-vault 8004-solana @solana/web3.js
+# npm install @quantulabs/agent-vault 8004-solana @solana/web3.js
 ```
 
 `8004-solana` is only needed by your app to register the agent. Agent Vault
@@ -33,7 +33,7 @@ Use `8004-solana` to get `agentAsset`, then use Agent Vault for wallets.
 
 ```ts
 import { Connection } from "@solana/web3.js";
-import { AgentVaultClient } from "agent-vault";
+import { AgentVaultClient } from "@quantulabs/agent-vault";
 
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 const agentAsset = "Your8004CoreAssetPubkey...";
@@ -181,7 +181,7 @@ For SOL, send directly to the wallet address. For SPL and Token-2022, send to
 the wallet ATA. Create it once if your sender cannot create recipient ATAs.
 
 ```ts
-import { TOKEN_2022_PROGRAM_ID } from "agent-vault";
+import { TOKEN_2022_PROGRAM_ID } from "@quantulabs/agent-vault";
 
 await agent.wallets.token({
   action: "createAta",
@@ -286,9 +286,3 @@ NO_DNA=1 npm run pack:dry-run
 ```
 
 `e2e:devnet` is preflight-only unless `AGENT_VAULT_E2E_SEND=1` is set.
-
-Useful docs:
-
-- [`SPEC.md`](SPEC.md): API contract and RPC rules.
-- [`SECURITY.md`](SECURITY.md): security model and release checks.
-- [`skill/SKILL.md`](skill/SKILL.md): short agent-facing integration guide.

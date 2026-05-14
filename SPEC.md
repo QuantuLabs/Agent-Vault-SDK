@@ -2,7 +2,7 @@
 
 ## Package
 
-The npm package name is `agent-vault`. Until npm publication, consume the
+The npm package name is `@quantulabs/agent-vault`. Until npm publication, consume the
 package from `github:QuantuLabs/Agent-Vault-SDK` or a local checkout.
 
 Description:
