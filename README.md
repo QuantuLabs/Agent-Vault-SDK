@@ -21,33 +21,25 @@ npm install github:QuantuLabs/Agent-Vault-SDK 8004-solana @solana/web3.js
 ```
 
 `8004-solana` is only needed by your app to register the agent. Agent Vault
-starts from the returned `agentAsset`.
+starts from the returned `agentAsset`. See the
+[8004-solana README](https://github.com/QuantuLabs/8004-solana-ts#readme) for
+the full registration flow.
 
 ## Quickstart
 
-Use `8004-solana` for identity registration, then use Agent Vault for wallets.
+Use `8004-solana` to get `agentAsset`, then use Agent Vault for wallets.
 `wallet` is the Solana signer you already use in your script or app, with a
 `publicKey` and signing support.
 
 ```ts
 import { Connection } from "@solana/web3.js";
-import { buildRegistrationFileJson, SolanaSDK } from "8004-solana";
+import { SolanaSDK } from "8004-solana";
 import { AgentVaultClient } from "agent-vault";
-
-const metadataJson = buildRegistrationFileJson({
-  name: "Trading Agent",
-  description: "Agent with isolated vault wallets",
-  image: "ipfs://...",
-  services: [],
-  skills: [],
-  domains: [],
-});
-const metadataUri = await uploadJson(metadataJson);
 
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 const identity = new SolanaSDK({ cluster: "devnet", signer: wallet });
 
-const registered = await identity.registerAgent(metadataUri, {
+const registered = await identity.registerAgent("ipfs://...", {
   collectionPointer,
 });
 const agentAsset = registered.asset;
@@ -68,12 +60,42 @@ await agent.wallets.fund({ wallet: 0, sol: "0.001" });
 await agent.wallets.send({ from: 0, to: recipient, sol: "0.0005" });
 ```
 
+`recipient` is an external Solana public key. If the agent is already
+registered, skip `identity.registerAgent(...)` and reuse the existing 8004 Core
+Asset pubkey as `agentAsset`.
+
+## Register Agent (8004-solana)
+
+Agent Vault does not register agents. Register with `8004-solana`, then pass the
+returned `asset` to Agent Vault as `agentAsset`.
+
+```ts
+import { buildRegistrationFileJson, SolanaSDK } from "8004-solana";
+
+const identity = new SolanaSDK({ cluster: "devnet", signer: wallet });
+
+const metadataJson = buildRegistrationFileJson({
+  name: "Trading Agent",
+  description: "Agent with isolated vault wallets",
+  image: "ipfs://...",
+  services: [],
+  skills: [],
+  domains: [],
+});
+
+const metadataUri = await uploadJson(metadataJson);
+const registered = await identity.registerAgent(metadataUri, {
+  collectionPointer,
+});
+
+const agentAsset = registered.asset;
+```
+
 `collectionPointer` is the pointer returned by your 8004 collection flow, for
 example `c1:...`. `uploadJson` must upload the metadata JSON and return an
-`ipfs://...` or HTTPS URI. `recipient` is an external Solana public key.
+`ipfs://...` or HTTPS URI.
 
-If the metadata is already uploaded, skip `buildRegistrationFileJson` and pass
-the URI directly to `8004-solana`:
+If the metadata is already uploaded, pass the URI directly:
 
 ```ts
 const registered = await identity.registerAgent("ipfs://...", {
@@ -81,6 +103,8 @@ const registered = await identity.registerAgent("ipfs://...", {
 });
 const agentAsset = registered.asset;
 ```
+
+More details: [8004-solana README](https://github.com/QuantuLabs/8004-solana-ts#readme).
 
 For app code, prefer the scoped API:
 
