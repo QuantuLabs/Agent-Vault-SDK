@@ -63,15 +63,27 @@ Agent Vault does not register agents. Register with `8004-solana`, then pass the
 returned `asset` to Agent Vault as `agentAsset`.
 
 ```ts
-import { SolanaSDK } from "8004-solana";
+import { SolanaSDK, buildRegistrationFileJson } from "8004-solana";
 
 const identity = new SolanaSDK({ cluster: "devnet", signer: wallet });
-const registered = await identity.registerAgent("ipfs://your-agent-metadata");
+
+const metadata = buildRegistrationFileJson({
+  name: "Trading Agent",
+  description: "Agent with isolated vault wallets",
+  image: "ipfs://...",
+  services: [],
+  skills: [],
+  domains: [],
+});
+
+const metadataUri = await uploadJson(metadata);
+const registered = await identity.registerAgent(metadataUri);
 const agentAsset = registered.asset;
 ```
 
-Your metadata URI must already be uploaded. For metadata building, IPFS upload,
-collection pointers, or ATOM options, use the
+`uploadJson` is your app's IPFS or HTTPS uploader and must return the final
+metadata URI. For collection pointers, ATOM options, or full metadata examples,
+use the
 [8004-solana README](https://github.com/QuantuLabs/8004-solana-ts#readme).
 
 For app code, prefer the scoped API:
