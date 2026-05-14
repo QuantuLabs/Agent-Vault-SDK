@@ -133,10 +133,27 @@ async function signTransaction(transaction: Transaction, signers: AgentVaultTran
   for (const signer of signers) {
     if ("signTransaction" in signer && typeof signer.signTransaction === "function") {
       const signed = await signer.signTransaction(transaction);
-      transaction.signatures = signed.signatures;
+      mergeSignatures(transaction, signed);
       continue;
     }
     transaction.partialSign(signer as Signer);
+  }
+}
+
+function mergeSignatures(target: Transaction, source: Transaction): void {
+  for (const returned of source.signatures) {
+    if (!returned.signature) {
+      continue;
+    }
+    const existing = target.signatures.find((entry) => entry.publicKey.equals(returned.publicKey));
+    if (existing) {
+      existing.signature = returned.signature;
+    } else {
+      target.signatures.push({
+        publicKey: returned.publicKey,
+        signature: returned.signature,
+      });
+    }
   }
 }
 

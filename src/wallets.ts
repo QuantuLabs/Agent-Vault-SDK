@@ -617,9 +617,6 @@ export class AgentVaultWalletsClient {
   }
 
   private async assertWriteAllowed(options: WalletActionOptions): Promise<void> {
-    if (options.send === false && options.sign === false) {
-      return;
-    }
     const manifest = this.instructions.releaseManifest;
     const genesisHash = await this.connection.getGenesisHash();
     if (manifest.cluster === "mainnet" || genesisHash === MAINNET_BETA_GENESIS_HASH) {

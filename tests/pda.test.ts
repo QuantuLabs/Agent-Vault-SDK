@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { Keypair, PublicKey, SystemProgram, type Connection } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram, Transaction, type Connection } from "@solana/web3.js";
 import {
   AGENT_VAULT_PROGRAM_ID,
   AGENT_VAULT_TAGS,
@@ -16,10 +16,13 @@ import {
   GLOBAL_CONFIG_LENGTH,
   NATIVE_MINT_ID,
   SPL_TOKEN_SYNC_NATIVE_TAG,
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_KIND,
   TOKEN_PROGRAM_ID,
   VAULT_CONFIG_LENGTH,
   WALLET_LENGTH,
   encodeLabel,
+  executeTransaction,
   solToLamports,
   tokensToBaseUnits,
   parseWallet,
@@ -333,6 +336,40 @@ assert.equal(setup.signature, "4NqC5aAD5yCRQXcYfZ95Hoq5yyT93L1oMRwA7gkBsYk9P");
 assert.equal(setup.confirmation?.value.err, null);
 assert.equal(setup.signers[0]?.toBase58(), holder.toBase58());
 
+const secondarySigner = Keypair.generate();
+const walletOnlySigner = {
+  publicKey: secondarySigner.publicKey,
+  signTransaction: (transaction: Transaction): Transaction => {
+    const clone = Transaction.from(transaction.serialize({
+      requireAllSignatures: false,
+      verifySignatures: false,
+    }));
+    for (const signature of clone.signatures) {
+      signature.signature = null;
+    }
+    clone.partialSign(secondarySigner);
+    return clone;
+  },
+};
+const mergedSignaturePreview = await executeTransaction(connection, {
+  feePayer: holder,
+  instructions: [
+    SystemProgram.transfer({
+      fromPubkey: secondarySigner.publicKey,
+      toPubkey: holder,
+      lamports: 1,
+    }),
+  ],
+  signer: holderSigner,
+  signers: [walletOnlySigner],
+  send: false,
+});
+assert.ok(mergedSignaturePreview.transaction.signatures.find((entry) => entry.publicKey.equals(holder))?.signature);
+assert.ok(
+  mergedSignaturePreview.transaction.signatures.find((entry) => entry.publicKey.equals(secondarySigner.publicKey))
+    ?.signature,
+);
+
 await assert.rejects(
   () => strictClient.wallets.send(agentAsset, {
     from: 0,
@@ -350,15 +387,16 @@ await assert.rejects(
   }),
   /candidate-not-deployed/,
 );
-const strictUnsignedPreview = await strictClient.wallets.send(agentAsset, {
-  from: 0,
-  to: holder,
-  lamports: 1n,
-  send: false,
-  sign: false,
-});
-assert.equal(strictUnsignedPreview.sent, false);
-assert.equal(strictUnsignedPreview.signed, false);
+await assert.rejects(
+  () => strictClient.wallets.send(agentAsset, {
+    from: 0,
+    to: holder,
+    lamports: 1n,
+    send: false,
+    sign: false,
+  }),
+  /candidate-not-deployed/,
+);
 
 const noSignerClient = AgentVaultClient.devnet({
   connection,
@@ -484,6 +522,33 @@ const createAtaPreview = await client.wallets.token(agentAsset, {
 });
 assert.equal(createAtaPreview.instruction.data[0], AGENT_VAULT_TAGS.createWalletAta);
 assert.equal(createAtaPreview.instruction.keys[0]?.pubkey.toBase58(), holder.toBase58());
+const createToken2022AtaPreview = await client.wallets.token(agentAsset, {
+  action: "createAta",
+  wallet: 0,
+  mint: agentAsset,
+  tokenProgram: TOKEN_2022_PROGRAM_ID,
+  send: false,
+  sign: false,
+});
+assert.equal(createToken2022AtaPreview.instruction.data[0], AGENT_VAULT_TAGS.createWalletAta);
+assert.equal(createToken2022AtaPreview.instruction.data[3], TOKEN_PROGRAM_KIND.token2022);
+assert.equal(createToken2022AtaPreview.instruction.keys[8]?.pubkey.toBase58(), TOKEN_2022_PROGRAM_ID.toBase58());
+const token2022TransferPreview = await client.wallets.send(agentAsset, {
+  from: 0,
+  to: client.wallets.ataAddress(agentAsset, 1, agentAsset, TOKEN_2022_PROGRAM_ID),
+  mint: agentAsset,
+  tokens: "1.5",
+  decimals: 6,
+  tokenProgram: TOKEN_2022_PROGRAM_ID,
+  expectedFee: 3n,
+  send: false,
+  sign: false,
+});
+assert.equal(token2022TransferPreview.instruction.data[0], AGENT_VAULT_TAGS.transferSpl);
+assert.equal(token2022TransferPreview.instruction.data.readBigUInt64LE(3), 1_500_000n);
+assert.equal(token2022TransferPreview.instruction.data[11], 6);
+assert.equal(token2022TransferPreview.instruction.data.readBigUInt64LE(12), 3n);
+assert.equal(token2022TransferPreview.instruction.keys[8]?.pubkey.toBase58(), TOKEN_2022_PROGRAM_ID.toBase58());
 const scopedAtaPreview = await agentScope.wallets.token({
   action: "createAta",
   wallet: 0,
@@ -688,15 +753,16 @@ await assert.rejects(
   }),
   /mainnet writes require canonical deployment verification/,
 );
-const unsafeMainnetUnsignedPreview = await unsafeMainnetClient.wallets.send(agentAsset, {
-  from: 0,
-  to: holder,
-  lamports: 1n,
-  send: false,
-  sign: false,
-});
-assert.equal(unsafeMainnetUnsignedPreview.sent, false);
-assert.equal(unsafeMainnetUnsignedPreview.signed, false);
+await assert.rejects(
+  () => unsafeMainnetClient.wallets.send(agentAsset, {
+    from: 0,
+    to: holder,
+    lamports: 1n,
+    send: false,
+    sign: false,
+  }),
+  /mainnet writes require canonical deployment verification/,
+);
 
 const realMainnetRpcClient = AgentVaultClient.devnet({
   connection: {

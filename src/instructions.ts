@@ -112,6 +112,10 @@ export class AgentVaultInstructions {
     });
   }
 
+  /**
+   * @deprecated Prefer direct SOL transfers to the wallet PDA for deposits.
+   * Kept only for advanced callers that intentionally need the raw program instruction.
+   */
   depositSol(agentAsset: PublicKeyish, index: number, funder: PublicKeyish, amount: U64Input): TransactionInstruction {
     return new TransactionInstruction({
       programId: this.programId,

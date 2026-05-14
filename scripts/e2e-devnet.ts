@@ -40,7 +40,6 @@ const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfc
 type CostCategory = "agent_vault" | "identity" | "aux";
 const TOKEN_ACCOUNT_LENGTH = 165;
 const EXPECTED_COVERAGE = new Map<number, string>([
-  [AGENT_VAULT_TAGS.initializeGlobalConfig, "initialize_global_config"],
   [AGENT_VAULT_TAGS.initVaultConfig, "init_vault_config"],
   [AGENT_VAULT_TAGS.createWallet, "create_wallet"],
   [AGENT_VAULT_TAGS.updateWalletLabel, "update_wallet_label"],
@@ -63,7 +62,6 @@ async function main(): Promise<void> {
   const initGlobal = process.env.AGENT_VAULT_INIT_GLOBAL === "1";
   const solUsdPrice = Number(process.env.SOL_USD_PRICE ?? "0");
   const coverage = new Set<number>();
-  const verifiedCoverage = new Set<number>();
 
   const connection = new Connection(rpcUrl, "confirmed");
   const readOnlyVault = AgentVaultClient.devnet({
@@ -134,7 +132,6 @@ async function main(): Promise<void> {
   if (!verification.ok) {
     throw new Error(`Agent Vault deployment verification failed: ${verification.issues.join("; ")}`);
   }
-  verifiedCoverage.add(AGENT_VAULT_TAGS.initializeGlobalConfig);
 
   const uri = `ipfs://agent-vault-sdk-e2e-${Date.now()}`;
   const identityResult = await costs.measure("8004 identity create", "identity", () =>
@@ -242,7 +239,7 @@ async function main(): Promise<void> {
   const overview = await vault.wallets.overview(agentAsset, { limit: 10 });
   assert.equal(overview.wallets.length, 5);
   assert.equal(overview.wallets[4]?.dataStatus, "recovery");
-  assertFullCoverage(coverage, verifiedCoverage);
+  assertFullCoverage(coverage);
   costs.print();
   console.log("devnet e2e completed with Agent Vault SDK flows");
 }
@@ -746,17 +743,16 @@ function solMinPostCheck(accountIndex: number, minLamports: bigint): Buffer {
   return out;
 }
 
-function assertFullCoverage(coverage: Set<number>, verifiedCoverage: Set<number>): void {
+function assertFullCoverage(coverage: Set<number>): void {
   const missing = [...EXPECTED_COVERAGE.entries()]
-    .filter(([tag]) => !coverage.has(tag) && !verifiedCoverage.has(tag))
+    .filter(([tag]) => !coverage.has(tag))
     .map(([tag, name]) => `${name}(${tag})`);
   if (missing.length > 0) {
     throw new Error(`missing Agent Vault instruction coverage: ${missing.join(", ")}`);
   }
   console.log("covered Agent Vault SDK flow instructions:");
   for (const [tag, name] of EXPECTED_COVERAGE.entries()) {
-    const status = coverage.has(tag) ? "sent" : "verified";
-    console.log(`  ${tag}: ${name} (${status})`);
+    console.log(`  ${tag}: ${name} (sent)`);
   }
 }
 

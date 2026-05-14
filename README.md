@@ -45,6 +45,7 @@ const vault = AgentVaultClient.devnet({
 
 const agent = vault.agent(agentAsset);
 
+// Creates two wallets: one per label.
 await agent.wallets.setup({ labels: ["treasury", "trading"] });
 
 const wallets = await agent.wallets.listAll();
@@ -92,10 +93,12 @@ const metadata = buildRegistrationFileJson({
 const metadataUri = `ipfs://${await ipfs.addJson(metadata)}`;
 const registered = await identity.registerAgent(metadataUri);
 const agentAsset = registered.asset;
+if (!agentAsset) throw new Error("8004 registration did not return an agent asset");
 ```
 
-`ipfs.addJson()` returns a CID, so register with `ipfs://<cid>`. For full IPFS
-config, collection, ATOM options, or richer metadata examples, use the
+`ipfs.addJson()` returns a CID, so register with `ipfs://<cid>`. Set
+`PINATA_JWT` or run an IPFS HTTP API on `http://localhost:5001`. For collection,
+ATOM options, or richer metadata examples, use the
 [8004-solana README](https://github.com/QuantuLabs/8004-solana-ts#readme).
 
 For app code, prefer the scoped API:
@@ -205,6 +208,9 @@ console.log("Token-2022 deposit address:", token2022DepositAddress.toBase58());
 Once the addresses exist, anyone can transfer SOL or tokens to them. Agent Vault
 authorization is only needed to move funds out.
 
+Token-2022 mints with hooks, confidential transfers, frozen accounts, or
+non-transferable rules may require mint-specific handling outside this SDK.
+
 ## Writes
 
 High-level outbound methods sign, send, and confirm when the client has a
@@ -241,11 +247,17 @@ const plan = await agent.wallets.send({
 });
 
 const signedTx = await wallet.signTransaction(plan.transaction);
+const simulation = await connection.simulateTransaction(signedTx);
+if (simulation.value.err) throw new Error(JSON.stringify(simulation.value.err));
+
 const signature = await connection.sendRawTransaction(signedTx.serialize());
+const confirmation = await connection.confirmTransaction(signature, "confirmed");
+if (confirmation.value.err) throw new Error(JSON.stringify(confirmation.value.err));
 ```
 
 `holder` is the current 8004 Core Asset owner that must authorize funds moving
-out. `feePayer` is the account paying the Solana transaction fee.
+out. `feePayer` is the account paying the Solana transaction fee. The SDK still
+runs deployment and mainnet guards before returning the unsigned transaction.
 
 ## Deployment Safety
 

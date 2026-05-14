@@ -24,6 +24,7 @@ Vault wallet path short and hard to misuse:
 const registered = await identity.registerAgent(metadataUri)
 const vault = AgentVaultClient.devnet({ connection, signer })
 const agentAsset = registered.asset
+if (!agentAsset) throw new Error("8004 registration did not return an agent asset")
 const agent = vault.agent(agentAsset)
 
 await agent.wallets.setup({ labels: ["treasury", "defi"] })
@@ -50,7 +51,9 @@ Target identity handoff:
 ```ts
 const registered = await identity.registerAgent(metadataUri)
 const client = AgentVaultClient.devnet({ connection, signer })
-const agent = client.agent(registered.asset)
+const agentAsset = registered.asset
+if (!agentAsset) throw new Error("8004 registration did not return an agent asset")
+const agent = client.agent(agentAsset)
 ```
 
 `client.wallets` is the Agent Vault surface. Beginner-facing flows should prefer binding the agent
@@ -133,6 +136,9 @@ full enumeration explicit without introducing an indexer.
 
 Token discovery is explicit and lazy. Default wallet listing does not scan token
 accounts.
+Token-2022 mints with transfer hooks, confidential transfer, default frozen
+state, or non-transferable extensions require mint-specific handling beyond the
+generic ATA and checked-transfer helpers.
 
 ## Deployment Verification
 
@@ -166,9 +172,11 @@ Identity registration should normally be done directly with `8004-solana`:
 ```ts
 const identity = new SolanaSDK({ cluster: "devnet", signer });
 const registered = await identity.registerAgent(metadataUri);
+const agentAsset = registered.asset;
+if (!agentAsset) throw new Error("8004 registration did not return an agent asset");
 
 const client = AgentVaultClient.devnet({ connection, signer });
-const agent = client.agent(registered.asset);
+const agent = client.agent(agentAsset);
 ```
 
 Agent Vault does not upload metadata, register agents, set collection pointers,

@@ -11,6 +11,7 @@ Use the scoped beginner surface first:
 const registered = await identity.registerAgent(metadataUri);
 const vault = AgentVaultClient.devnet({ connection, signer });
 const agentAsset = registered.asset;
+if (!agentAsset) throw new Error("8004 registration did not return an agent asset");
 const agent = vault.agent(agentAsset);
 ```
 
@@ -42,6 +43,7 @@ await agent.wallets.token({ action: "wrapSol", wallet: 0, sol: "0.001" });
 - Use `sol` and `tokens` in app-facing code. Raw `lamports`, `baseUnits`, or deprecated `amount` are advanced-only.
 - Token transfers infer mint decimals when `decimals` is omitted.
 - Token-2022 transfers can infer `expectedFee` from the mint.
+- Token-2022 hooks, confidential transfers, frozen accounts, and non-transferable rules need mint-specific handling outside the generic helpers.
 - `execute` defaults `walletMetaIndex = 0`, `targetAccounts = []`, empty target data, and one post-check.
 - Use `{ send: false, sign: false, feePayer }` when returning a transaction for external signing.
 
