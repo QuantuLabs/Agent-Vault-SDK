@@ -136,6 +136,12 @@ export interface ListWalletsOptions {
   chunkSize?: number;
 }
 
+export interface ListAllWalletsOptions {
+  startIndex?: number;
+  includeClosed?: boolean;
+  chunkSize?: number;
+}
+
 export interface SetupWalletInstructionsOptions {
   labels?: Array<string | Uint8Array>;
   includeVaultInit?: "auto" | "always" | "never";
@@ -290,6 +296,7 @@ export interface ExecuteWalletOptions extends ExecuteCpiCheckedParams, WalletAct
 export interface AgentVaultScopedWallets {
   setup(options?: SetupWalletOptions): Promise<SetupWalletPlan>;
   list(options?: ListWalletsOptions): Promise<WalletRecord[]>;
+  listAll(options?: ListAllWalletsOptions): Promise<WalletRecord[]>;
   overview(options?: ListWalletsOptions): Promise<WalletOverview>;
   get(index: number): Promise<WalletRecord>;
   address(index: number): PublicKey;

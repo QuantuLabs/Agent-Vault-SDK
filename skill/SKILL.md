@@ -13,10 +13,18 @@ const { agentAsset } = await vault.registerAgent(metadata, { collectionPointer, 
 const agent = vault.agent(agentAsset);
 ```
 
+Parameter rule:
+
+```text
+agentAsset = 8004 Core Asset pubkey
+wallet     = numeric Agent Vault wallet index, usually 0, 1, 2...
+```
+
 Prefer these calls for normal app code:
 
 ```ts
 await agent.wallets.setup({ labels: ["treasury", "defi"] });
+await agent.wallets.listAll();
 await agent.wallets.fund({ wallet: 0, sol: "0.001" });
 await agent.wallets.send({ from: 0, to: recipient, sol: "0.0005" });
 await agent.wallets.send({ from: 0, to: tokenAccount, mint, tokens: "100" });
@@ -28,6 +36,8 @@ await agent.wallets.token({ action: "wrapSol", wallet: 0, sol: "0.001" });
 
 - `holder` is inferred from `client.signer.publicKey`.
 - `payer` is inferred from `client.signer.publicKey`.
+- `agentAsset` is the 8004 Core Asset pubkey; `wallet` is the numeric wallet index (`0`, `1`, etc.), not the wallet PDA address.
+- Use `agent.wallets.listAll()` to enumerate all wallet indexes for one agent; use `list({ startIndex, limit })` for paginated UI.
 - `registerAgent(metadata, { uploadJson })` builds 8004 metadata JSON and registers the returned URI; `uploadJson` may return a full URI or a bare IPFS CID.
 - Use `sol` and `tokens` in app-facing code. Raw `lamports`, `baseUnits`, or deprecated `amount` are advanced-only.
 - Token transfers infer mint decimals when `decimals` is omitted.

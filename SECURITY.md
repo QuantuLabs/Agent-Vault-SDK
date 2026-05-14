@@ -28,6 +28,14 @@ advisories are reviewed before release; compatible security pins may be applied
 through `overrides` when they do not break the public API or transaction
 builders.
 
+## Integration Safety Checklist
+
+- Treat `agentAsset` as the agent identity root and `wallet` as a numeric index.
+- Use `vault.wallets.verifyDeployment()` before debugging signed write failures.
+- Do not set `allowUnverifiedDeployment` in production or mainnet-like flows.
+- Return unsigned transactions with `{ send: false, sign: false }` when a browser wallet must review and sign.
+- Never collect or store user private keys, seed phrases, or keypair files in SDK integrations.
+
 ## Release Expectations
 
 Signed writes are expected to fail closed unless deployment verification passes

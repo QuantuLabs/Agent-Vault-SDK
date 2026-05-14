@@ -14,6 +14,24 @@ TypeScript SDK for Agent Vault: 8004 agent registration and multi-wallet PDA man
 The SDK is standalone and imports the existing public `8004-solana` package for
 8004 agent registration and registry PDA compatibility.
 
+## DX Contract
+
+The SDK should make the common path short and hard to misuse:
+
+```ts
+const vault = AgentVaultClient.devnet({ connection, identity, signer })
+const { agentAsset } = await vault.registerAgent(metadata, { collectionPointer, uploadJson })
+const agent = vault.agent(agentAsset)
+
+await agent.wallets.setup({ labels: ["treasury", "defi"] })
+await agent.wallets.listAll()
+await agent.wallets.fund({ wallet: 0, sol: "0.001" })
+```
+
+Docs and examples must reserve `agentAsset` for the 8004 Core Asset pubkey and `wallet` for a
+numeric Agent Vault wallet index. Examples should use `sol` and `tokens` for human-facing amounts;
+raw `lamports` and `baseUnits` are advanced escape hatches.
+
 ## Product Surface
 
 The root client exposes one agent registration method and two namespaces:
@@ -40,14 +58,15 @@ client.identities.getAgentAccountPda(agentAsset)
 client.identities.requireIdentitySdk()
 ```
 
-`client.wallets` is the Agent Vault surface. The recommended high-level surface
-has six methods. Beginner-facing flows should prefer binding the agent once:
+`client.wallets` is the Agent Vault surface. Beginner-facing flows should prefer binding the agent
+once:
 
 ```ts
 const agent = client.agent(agentAsset)
 
 agent.wallets.setup({ labels })
 agent.wallets.list({ startIndex, limit, includeClosed })
+agent.wallets.listAll({ startIndex, includeClosed })
 agent.wallets.fund({ wallet, sol })
 agent.wallets.send({ from, to, sol })
 agent.wallets.send({ from, to, mint, tokens })
@@ -62,6 +81,7 @@ Target API:
 ```ts
 client.wallets.setup(agentAsset, { labels, includeVaultInit, feePayer, signer, send })
 client.wallets.list(agentAsset, { startIndex, limit, includeClosed })
+client.wallets.listAll(agentAsset, { startIndex, includeClosed })
 client.wallets.fund(agentAsset, { wallet, sol, feePayer, signer, send })
 client.wallets.send(agentAsset, { from, to, sol })
 client.wallets.send(agentAsset, { from, to, mint, tokens, tokenProgram })
@@ -99,6 +119,9 @@ client.wallets.overview(agentAsset, { limit })
 client.wallets.verifyDeployment()
 ```
 
+`agentAsset` is the 8004 Core Asset public key returned by registration. The `wallet` field is the
+numeric Agent Vault wallet index (`0`, `1`, ...), not the wallet PDA address.
+
 Raw instruction construction is available through `client.wallets.instructions`.
 
 ## RPC Rules
@@ -111,6 +134,9 @@ Default listing path:
 1 getAccountInfo(vault_config)
 + ceil(limit / 100) getMultipleAccountsInfo(wallet_pdas)
 ```
+
+`list` is paginated. `listAll` uses the same flow with `limit = wallet_count - startIndex`, making
+full enumeration explicit without introducing an indexer.
 
 Token discovery is explicit and lazy. Default wallet listing does not scan token
 accounts.

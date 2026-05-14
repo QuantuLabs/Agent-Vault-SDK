@@ -38,7 +38,8 @@ const MAINNET_BETA_GENESIS_HASH = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"
 const pdas = new AgentVaultPdas(AGENT_VAULT_PROGRAM_ID, registryProgram);
 const [vaultConfig, vaultConfigBump] = pdas.vaultConfig(agentAsset);
 const [wallet0, wallet0Bump] = pdas.wallet(agentAsset, 0);
-const [wallet1] = pdas.wallet(agentAsset, 1);
+const [wallet1, wallet1Bump] = pdas.wallet(agentAsset, 1);
+const [wallet2] = pdas.wallet(agentAsset, 2);
 const [agentAccount] = pdas.agentAccount(agentAsset);
 
 assert.equal(vaultConfig.toBase58(), "7DyK3iV6j9cDk1vLZyaPC3Eqmg76VKEwWYVkb4huFkJC");
@@ -71,13 +72,7 @@ for (const expectedCostLabel of [
   assert.ok(devnetE2eSource.includes(expectedCostLabel), `missing devnet cost label ${expectedCostLabel}`);
 }
 
-const walletData = Buffer.alloc(WALLET_LENGTH);
-DISCRIMINATOR_WALLET.copy(walletData, 0);
-walletData[8] = 0;
-walletData[9] = wallet0Bump;
-walletData.writeUInt16LE(7, 10);
-walletData.writeUInt16LE(1, 12);
-encodeLabel("strict").copy(walletData, 14);
+const walletData = walletAccountData(7, wallet0Bump, "strict");
 const parsedWallet = parseWallet(walletData);
 assert.equal(parsedWallet.index, 7);
 assert.equal(parsedWallet.isActive, true);
@@ -261,8 +256,7 @@ await assert.rejects(() => bumpMismatchVaultClient.wallets.getVault(agentAsset),
 
 let overviewAccountInfoCalls = 0;
 let overviewMultipleAccountInfoCalls = 0;
-const overviewWalletData = Buffer.from(walletData);
-overviewWalletData.writeUInt16LE(0, 10);
+const overviewWalletData = walletAccountData(0, wallet0Bump, "overview");
 const overviewConnection = {
   ...connection,
   getAccountInfo: async (address: PublicKey) => {
@@ -288,6 +282,57 @@ assert.equal(overview.vault?.walletCount, 1);
 assert.equal(overview.wallets.length, 1);
 assert.equal(overviewAccountInfoCalls, 1);
 assert.equal(overviewMultipleAccountInfoCalls, 1);
+
+let listAllMultipleAccountInfoCalls = 0;
+const wallet1Data = walletAccountData(1, wallet1Bump, "defi");
+const listAllConnection = {
+  ...connection,
+  getAccountInfo: async (address: PublicKey) => {
+    if (address.equals(vaultConfig)) {
+      return accountInfo(vaultConfigData(3), AGENT_VAULT_PROGRAM_ID, false);
+    }
+    return null;
+  },
+  getMultipleAccountsInfo: async (addresses: PublicKey[]) => {
+    listAllMultipleAccountInfoCalls += 1;
+    return addresses.map((address) => {
+      if (address.equals(wallet0)) {
+        return accountInfo(overviewWalletData, AGENT_VAULT_PROGRAM_ID, false);
+      }
+      if (address.equals(wallet1)) {
+        return accountInfo(wallet1Data, AGENT_VAULT_PROGRAM_ID, false);
+      }
+      if (address.equals(wallet2)) {
+        return null;
+      }
+      throw new Error(`unexpected wallet address ${address.toBase58()}`);
+    });
+  },
+} as unknown as Connection;
+const listAllClient = AgentVaultClient.devnet({
+  connection: listAllConnection,
+  allowUnverifiedDeployment: true,
+});
+const allWallets = await listAllClient.wallets.listAll(agentAsset, {
+  chunkSize: 2,
+  includeClosed: true,
+});
+assert.deepEqual(allWallets.map((wallet) => wallet.index), [0, 1, 2]);
+assert.deepEqual(allWallets.map((wallet) => wallet.dataStatus), ["active", "active", "closed"]);
+assert.equal(listAllMultipleAccountInfoCalls, 2);
+const openWallets = await listAllClient.wallets.listAll(agentAsset, { chunkSize: 2 });
+assert.deepEqual(openWallets.map((wallet) => wallet.index), [0, 1]);
+const allFromIndexOne = await listAllClient.wallets.listAll(agentAsset, {
+  startIndex: 1,
+  chunkSize: 2,
+  includeClosed: true,
+});
+assert.deepEqual(allFromIndexOne.map((wallet) => wallet.index), [1, 2]);
+const scopedAllWallets = await listAllClient.agent(agentAsset).wallets.listAll({
+  chunkSize: 2,
+  includeClosed: true,
+});
+assert.equal(scopedAllWallets.length, 3);
 
 const setupPreview = await client.wallets.setup(agentAsset, holder, {
   labels: ["trading", "treasury"],
@@ -919,6 +964,17 @@ function accountInfo(data: Buffer, owner: PublicKey, executable: boolean) {
     lamports: 1,
     rentEpoch: 0,
   };
+}
+
+function walletAccountData(index: number, bump: number, label: string): Buffer {
+  const data = Buffer.alloc(WALLET_LENGTH);
+  DISCRIMINATOR_WALLET.copy(data, 0);
+  data[8] = 0;
+  data[9] = bump;
+  data.writeUInt16LE(index, 10);
+  data.writeUInt16LE(1, 12);
+  encodeLabel(label).copy(data, 14);
+  return data;
 }
 
 function programStateData(programData: PublicKey): Buffer {

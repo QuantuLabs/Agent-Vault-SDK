@@ -24,6 +24,7 @@ import type {
   ExecuteWalletOptions,
   ExecuteCpiCheckedParams,
   FundWalletOptions,
+  ListAllWalletsOptions,
   ListWalletsOptions,
   PublicKeyish,
   SendWalletOptions,
@@ -134,6 +135,15 @@ export class AgentVaultWalletsClient {
       return [];
     }
     return this.listFromVault(asset, vault, normalized);
+  }
+
+  async listAll(agentAsset: PublicKeyish, options: ListAllWalletsOptions = {}): Promise<WalletRecord[]> {
+    const asset = toPublicKey(agentAsset);
+    const vault = await this.getVault(asset);
+    if (!vault) {
+      return [];
+    }
+    return this.listFromVault(asset, vault, normalizeListAllOptions(options, vault.walletCount));
   }
 
   private async listFromVault(
@@ -738,6 +748,10 @@ class ScopedAgentVaultWalletsClient implements AgentVaultScopedWallets {
     return this.wallets.list(this.agentAsset, options);
   }
 
+  listAll(options: ListAllWalletsOptions = {}): Promise<WalletRecord[]> {
+    return this.wallets.listAll(this.agentAsset, options);
+  }
+
   overview(options: ListWalletsOptions = {}): Promise<WalletOverview> {
     return this.wallets.overview(this.agentAsset, options);
   }
@@ -891,6 +905,22 @@ function normalizeListOptions(options: ListWalletsOptions): NormalizedListWallet
   const normalized: NormalizedListWalletsOptions = {
     startIndex: validateNonNegativeInteger(options.startIndex ?? 0, "startIndex"),
     limit: validateNonNegativeInteger(options.limit ?? DEFAULT_LIST_LIMIT, "limit"),
+    chunkSize: validateChunkSize(options.chunkSize ?? DEFAULT_CHUNK_SIZE),
+  };
+  if (options.includeClosed !== undefined) {
+    normalized.includeClosed = options.includeClosed;
+  }
+  return normalized;
+}
+
+function normalizeListAllOptions(
+  options: ListAllWalletsOptions,
+  walletCount: number,
+): NormalizedListWalletsOptions {
+  const startIndex = validateNonNegativeInteger(options.startIndex ?? 0, "startIndex");
+  const normalized: NormalizedListWalletsOptions = {
+    startIndex,
+    limit: Math.max(0, walletCount - startIndex),
     chunkSize: validateChunkSize(options.chunkSize ?? DEFAULT_CHUNK_SIZE),
   };
   if (options.includeClosed !== undefined) {
