@@ -249,21 +249,30 @@ you explicitly need integer units. For token sends, `mint` is the SPL mint and
 
 ## External Signing
 
-Return a transaction without signing or sending:
+This is only for apps that prepare a transaction in one place and sign it
+elsewhere, for example a browser wallet, custody flow, or multisig. Normal
+scripts with `AgentVaultClient.devnet({ signer: wallet })` can ignore this.
+
+Example: prepare a withdrawal from wallet #0, let the user's wallet sign it,
+then send it yourself:
 
 ```ts
-const plan = await agent.wallets.setup({
-  labels: ["treasury"],
+const plan = await agent.wallets.send({
+  from: 0,
+  to: recipient,
+  sol: "0.0005",
+  holder: wallet.publicKey,
   feePayer: wallet.publicKey,
   send: false,
   sign: false,
 });
 
-const tx = plan.transaction;
+const signedTx = await wallet.signTransaction(plan.transaction);
+const signature = await connection.sendRawTransaction(signedTx.serialize());
 ```
 
-The same `send: false` / `sign: false` options work on wallet write methods.
-Pass `holder` too when the fee payer is not the Core Asset owner.
+`holder` is the current 8004 Core Asset owner that must authorize funds moving
+out. `feePayer` is the account paying the Solana transaction fee.
 
 ## Deployment Safety
 
