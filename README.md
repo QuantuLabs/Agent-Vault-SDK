@@ -56,7 +56,7 @@ await agent.wallets.setup({ labels: ["treasury", "trading"] });
 const wallets = await agent.wallets.listAll();
 console.log(wallets.map((wallet) => [wallet.index, wallet.address.toBase58()]));
 
-await agent.wallets.fund({ wallet: 0, sol: "0.001" });
+// After funding wallet #0 with the printed address:
 await agent.wallets.send({ from: 0, to: recipient, sol: "0.0005" });
 ```
 
@@ -128,8 +128,6 @@ There are two ids to keep straight:
 Do not pass the wallet PDA where the SDK asks for `agentAsset`.
 
 ```ts
-await agent.wallets.fund({ wallet: 0, sol: "0.001" });
-
 const walletPda = agent.wallets.address(0);
 ```
 
@@ -168,25 +166,59 @@ await agent.wallets.listAll({ includeClosed: true });
 accounts in chunks with `getMultipleAccountsInfo`. It does not require an
 indexer.
 
-## Writes
+## Funding
 
-High-level methods sign, send, and confirm when the client has a signer:
+Most apps can fund Agent Vault wallets directly from any wallet UI, faucet, CLI,
+or backend transfer. List wallets first, then use the address for deposits.
 
 ```ts
-await agent.wallets.fund({ wallet: 0, sol: "0.001" });
+const wallets = await agent.wallets.listAll();
+const treasury = wallets[0];
+
+console.log("SOL deposit address:", treasury.address.toBase58());
+```
+
+For SOL, send directly to the wallet address. For SPL and Token-2022, send to
+the wallet ATA. Create it once if your sender cannot create recipient ATAs.
+
+```ts
+import { TOKEN_2022_PROGRAM_ID } from "agent-vault";
+
+await agent.wallets.token({
+  action: "createAta",
+  wallet: treasury.index,
+  mint: splMint,
+});
+const splDepositAddress = agent.wallets.ataAddress(treasury.index, splMint);
+console.log("SPL deposit address:", splDepositAddress.toBase58());
+
+await agent.wallets.token({
+  action: "createAta",
+  wallet: treasury.index,
+  mint: token2022Mint,
+  tokenProgram: TOKEN_2022_PROGRAM_ID,
+});
+const token2022DepositAddress = agent.wallets.ataAddress(
+  treasury.index,
+  token2022Mint,
+  TOKEN_2022_PROGRAM_ID,
+);
+console.log("Token-2022 deposit address:", token2022DepositAddress.toBase58());
+```
+
+Once the addresses exist, anyone can transfer SOL or tokens to them. Agent Vault
+authorization is only needed to move funds out.
+
+## Writes
+
+High-level outbound methods sign, send, and confirm when the client has a
+signer:
+
+```ts
 await agent.wallets.send({ from: 0, to: 1, sol: "0.0001" });
 await agent.wallets.send({ from: 0, to: recipient, sol: "0.0005" });
 await agent.wallets.send({ from: 0, to: tokenAccount, mint, tokens: "12.5" });
 ```
-
-`fund()` deposits SOL into an Agent Vault wallet. It uses the client signer as
-the default `payer`, so `AgentVaultClient.devnet({ signer: wallet })` makes
-`wallet` pay both the transaction fee and the deposited SOL. Pass `payer` when
-another wallet should fund the deposit.
-
-Why use `fund()` instead of a direct SOL transfer? It keeps app code on
-`wallet: 0` style indexes, derives the PDA for you, and the program rejects
-deposits into inactive or recovery-only Agent Vault wallets.
 
 Use `sol` and `tokens` in app code. Use raw `lamports` and `baseUnits` only when
 you explicitly need integer units. For token sends, `mint` is the SPL mint and

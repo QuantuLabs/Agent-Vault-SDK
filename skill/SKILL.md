@@ -26,7 +26,6 @@ Prefer these calls for normal app code:
 ```ts
 await agent.wallets.setup({ labels: ["treasury", "defi"] });
 await agent.wallets.listAll();
-await agent.wallets.fund({ wallet: 0, sol: "0.001" });
 await agent.wallets.send({ from: 0, to: recipient, sol: "0.0005" });
 await agent.wallets.send({ from: 0, to: tokenAccount, mint, tokens: "100" });
 await agent.wallets.token({ action: "createAta", wallet: 0, mint });
@@ -36,9 +35,9 @@ await agent.wallets.token({ action: "wrapSol", wallet: 0, sol: "0.001" });
 ## Defaults
 
 - `holder` is inferred from `client.signer.publicKey`.
-- `payer` is inferred from `client.signer.publicKey`.
 - `agentAsset` is the 8004 Core Asset pubkey; `wallet` is the numeric wallet index (`0`, `1`, etc.), not the wallet PDA address.
 - Use `agent.wallets.listAll()` to enumerate all wallet indexes for one agent; use `list({ startIndex, limit })` for paginated UI.
+- For funding, list wallets and send SOL directly to `wallet.address`; for SPL or Token-2022, create/read the wallet ATA with `agent.wallets.token({ action: "createAta", ... })` and `agent.wallets.ataAddress(...)`.
 - Use `8004-solana` for identity registration; Agent Vault starts from the returned `asset`.
 - Use `sol` and `tokens` in app-facing code. Raw `lamports`, `baseUnits`, or deprecated `amount` are advanced-only.
 - Token transfers infer mint decimals when `decimals` is omitted.
