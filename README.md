@@ -179,6 +179,15 @@ await agent.wallets.send({ from: 0, to: recipient, sol: "0.0005" });
 await agent.wallets.send({ from: 0, to: tokenAccount, mint, tokens: "12.5" });
 ```
 
+`fund()` deposits SOL into an Agent Vault wallet. It uses the client signer as
+the default `payer`, so `AgentVaultClient.devnet({ signer: wallet })` makes
+`wallet` pay both the transaction fee and the deposited SOL. Pass `payer` when
+another wallet should fund the deposit.
+
+Why use `fund()` instead of a direct SOL transfer? It keeps app code on
+`wallet: 0` style indexes, derives the PDA for you, and the program rejects
+deposits into inactive or recovery-only Agent Vault wallets.
+
 Use `sol` and `tokens` in app code. Use raw `lamports` and `baseUnits` only when
 you explicitly need integer units. For token sends, `mint` is the SPL mint and
 `to` is either another wallet index or a destination token account.
