@@ -63,27 +63,39 @@ Agent Vault does not register agents. Register with `8004-solana`, then pass the
 returned `asset` to Agent Vault as `agentAsset`.
 
 ```ts
-import { SolanaSDK, buildRegistrationFileJson } from "8004-solana";
+import {
+  IPFSClient,
+  ServiceType,
+  SolanaSDK,
+  buildRegistrationFileJson,
+} from "8004-solana";
 
-const identity = new SolanaSDK({ cluster: "devnet", signer: wallet });
+const pinataJwt = process.env.PINATA_JWT;
+const ipfs = pinataJwt
+  ? new IPFSClient({ pinataEnabled: true, pinataJwt })
+  : new IPFSClient({ url: "http://localhost:5001" });
+const identity = new SolanaSDK({
+  cluster: "devnet",
+  signer: wallet,
+  ipfsClient: ipfs,
+});
 
 const metadata = buildRegistrationFileJson({
   name: "Trading Agent",
   description: "Agent with isolated vault wallets",
   image: "ipfs://...",
-  services: [],
-  skills: [],
-  domains: [],
+  services: [{ type: ServiceType.MCP, value: "https://api.example.com/mcp" }],
+  skills: ["natural_language_processing/natural_language_generation/text_completion"],
+  domains: ["technology/software_engineering/software_engineering"],
 });
 
-const metadataUri = await uploadJson(metadata);
+const metadataUri = `ipfs://${await ipfs.addJson(metadata)}`;
 const registered = await identity.registerAgent(metadataUri);
 const agentAsset = registered.asset;
 ```
 
-`uploadJson` is your app's IPFS or HTTPS uploader and must return the final
-metadata URI. For collection pointers, ATOM options, or full metadata examples,
-use the
+`ipfs.addJson()` returns a CID, so register with `ipfs://<cid>`. For full IPFS
+config, collection, ATOM options, or richer metadata examples, use the
 [8004-solana README](https://github.com/QuantuLabs/8004-solana-ts#readme).
 
 For app code, prefer the scoped API:
