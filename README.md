@@ -133,11 +133,14 @@ const walletPda = agent.wallets.address(0);
 
 ## Wallets
 
-Create wallets:
+Create one wallet:
 
 ```ts
-await agent.wallets.setup({ labels: ["treasury", "trading", "ops"] });
+await agent.wallets.setup({ labels: ["treasury"] });
 ```
+
+`setup()` creates one wallet per label. For example,
+`labels: ["treasury", "trading", "ops"]` creates three wallets.
 
 List all wallets for one agent:
 
